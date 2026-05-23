@@ -73,7 +73,7 @@ func (sampler *GoRoutineSampler) Sample(stop <-chan any) <-chan Metadata {
 				metadata := Metadata{
 					Timestamp: time.Now(),
 					truncated: false,
-					stackDump: make([]byte, 5 * (1 << 20)), // start off with 1 kB. NO. 1 kB is too less. Give 5 MB
+					stackDump: make([]byte, 5 * (1 << 20)), // start with 5 MB, truncate later if required
 					numGoroutines: runtime.NumGoroutine(),
 				}
 				for {
@@ -98,7 +98,7 @@ func (sampler *GoRoutineSampler) Sample(stop <-chan any) <-chan Metadata {
 				defer timeout.Stop()
 
 				select {
-				case dataStream <- metadata:
+				case dataStream<- metadata:
 					if !timeout.Stop() {
 						<-timeout.C
 					}

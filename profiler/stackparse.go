@@ -228,6 +228,9 @@ func Parse(stop <-chan any, dataStream <-chan Metadata) <-chan Sample {
 							next_state = StateHeading
 						}
 				}
+				if sample.GoRoutineCount != len(sample.List) {
+					panic("[STACK PARSER] Goroutine count not same as number of goroutines in sample")
+				}
 				parsedStream<- *sample
 			}
 		}
@@ -243,7 +246,7 @@ func parseHeading(sample *Sample, line []byte) bool {
 	begin with "goroutine ..." and so we need not check it once again.
 	*/
 	
-	line = bytes.TrimSpace(line[len(heading_prefix) : ])
+	line = bytes.TrimSpace(line[len(heading_prefix) : ]) // faster than regex and works because the string beginning is deterministic
 	id := bytes.Split(line, []byte(" "))[0]
 
 	newGoRoutine := GoRoutine{
