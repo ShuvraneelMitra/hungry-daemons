@@ -8,14 +8,20 @@ import (
 
 // credit to 0xataru/go_eventmanager: I read through the code before writing my own
 
+type EventType int
+
+const (
+	KILL EventType = iota
+)
+
 type Event struct {
-	Name string
+	Name EventType
 	Timestamp time.Time
 	Data any
 }
 
 type EventManager struct {
-	subscribers map[string][]chan Event
+	subscribers map[EventType][]chan Event
 	mtx sync.RWMutex
 }
 
@@ -27,19 +33,19 @@ var (
 func NewEventManager() *EventManager {
 	once.Do(func() {
 		instance = &EventManager{
-			subscribers: make(map[string][]chan Event),
+			subscribers: make(map[EventType][]chan Event),
 		}
 	})
 	return instance
 }
 
-func (event_mgr *EventManager) Subscribe(event string, channel chan Event) {
+func (event_mgr *EventManager) Subscribe(event EventType, channel chan Event) {
 	event_mgr.mtx.Lock()
 	event_mgr.subscribers[event] = append(event_mgr.subscribers[event], channel)
 	event_mgr.mtx.Unlock()
 }
 
-func (event_mgr *EventManager) Unsubscribe(event string, channel chan Event) {	
+func (event_mgr *EventManager) Unsubscribe(event EventType, channel chan Event) {	
 	event_mgr.mtx.Lock()
 	defer event_mgr.mtx.Unlock()
 	subs, ok := event_mgr.subscribers[event]
@@ -58,7 +64,7 @@ func (event_mgr *EventManager) Unsubscribe(event string, channel chan Event) {
 	event_mgr.subscribers[event] = subs
 }
 
-func (event_mgr *EventManager) Send(event string, data any) {
+func (event_mgr *EventManager) Send(event EventType, data any) {
 	_, ok := event_mgr.subscribers[event]
 
 	event_mgr.mtx.RLock()

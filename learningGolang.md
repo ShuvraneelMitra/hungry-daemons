@@ -5,3 +5,7 @@
 [StackOverflow Link](https://stackoverflow.com/questions/52884836/why-does-many-golang-project-directly-import-from-github) <br>
 [One more Link](https://stackoverflow.com/questions/38717033/golang-importing-packages-from-github-requests-me-to-remember-the-github-url?rq=3) <br>
 [Official Go Blog](https://go.dev/blog/organizing-go-code)
+
+### What is the `internal` folder?
+
+[Blog link](https://www.bytesizego.com/blog/golang-internal-package)
