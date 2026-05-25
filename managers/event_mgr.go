@@ -12,6 +12,8 @@ type EventType int
 
 const (
 	KILL EventType = iota
+	RELEASE_CPU
+	SPAWN
 )
 
 type Event struct {

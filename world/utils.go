@@ -11,3 +11,42 @@ func generateRandomString(n int) string {
 	}
 	return string(b)
 }
+
+func probablyExecute(probability float64, fn func()) {
+	if rand.Float64() < probability {
+		fn()
+	}
+}
+
+func randomScale() float64 {
+	if rand.IntN(2) == 0 {
+		return 0.5 + rand.Float64()*0.5
+	}
+	return 1 + rand.Float64()
+}
+
+func mutateInt(value int) int {
+	if value <= 1 {
+		return value
+	}
+
+	change := rand.IntN(value) - value/2
+	return value + change
+}
+
+func clampFloat(value, min, max float64) float64 {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func maxInt(value, min int) int {
+	if value < min {
+		return min
+	}
+	return value
+}

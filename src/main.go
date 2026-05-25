@@ -10,4 +10,5 @@ import (
 
 func main(){
 	gui.Run()
+	// time.NewTicker(time.Second / time.Duration(cfg.Env.TicksPerS))
 }

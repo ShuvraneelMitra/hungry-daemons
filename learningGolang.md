@@ -9,3 +9,7 @@
 ### What is the `internal` folder?
 
 [Blog link](https://www.bytesizego.com/blog/golang-internal-package)
+
+### Something on waitgroups
+
+[Blog Link](https://victoriametrics.com/blog/go-sync-waitgroup/)
