@@ -3,7 +3,7 @@
 [env]
 initial_population  =  10
 max_population      =  500
-simulation_ticks    =  1000
+simulation_ticks    =  100
 max_cpu_tokens      =  100
 life_expectancy     =  20
 ticks_per_s         =  2

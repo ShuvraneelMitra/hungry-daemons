@@ -4,7 +4,11 @@ import (
     . "github.com/ShuvraneelMitra/hungry-daemons/managers"
     "context"
     "time"
-    "math/rand/v2"
+    "sync"
+)
+
+const (
+    CPU_RELEASE_PROB = 0.8
 )
 
 type Instruction struct {
@@ -20,6 +24,7 @@ type Genome struct {
     ReplicationRate float64
     CPUHunger       int
     MutationChance  float64
+    MinimumHoldTime int // how long it holds on to CPU tokens before releasing
     MinimumLifespan int
     LifeWithoutFood int // max number of ticks it can survive without food (cputokens)
 	InstructionSet  []Instruction
@@ -31,8 +36,11 @@ type Daemon struct {
     CreatedTick        int // essentially Birthday!
     LastHeldTokens     int // tick
 
+    mtx                *sync.RWMutex
+
 	Env                Environment
     Channel            chan Event
+    TickC              chan int
 }
 
 func NewDaemon(genome Genome, world Environment, tick int) *Daemon {
@@ -42,8 +50,11 @@ func NewDaemon(genome Genome, world Environment, tick int) *Daemon {
         CreatedTick   : tick,
         LastHeldTokens: -1,
 
+		mtx           : &sync.RWMutex{},
+
         Env           : world,
         Channel       : make(chan Event),
+        TickC         : make(chan int, 1),
     }
 
     return daemon
@@ -74,20 +85,82 @@ func (daemon *Daemon) MutateGenome(parent Genome) Genome {
 }
 
 
-func (daemon *Daemon) Run(ctx context.Context, ticker *time.Ticker) {
-    for {
-            select {
-                case <-ctx.Done():
-                    return
+func (daemon *Daemon) Run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
 
-                case <-ticker.C:
-					tickCtx, cancel := context.WithTimeout(ctx, time.Second/time.Duration(daemon.Env.TicksPerS()))
-					
-            }
+		case tick, ok := <-daemon.TickC:
+            if !ok { return }
+            tickCtx, cancel := context.WithTimeout(ctx, time.Second / time.Duration(daemon.Env.TicksPerS()))
+			daemon.Tick(tickCtx, tick)
+            cancel()
 		}
+	}
 }
 
 func (daemon *Daemon) Replicate() {
-    childGenome := daemon.MutateGenome(daemon.Genome)
+    newGenome := daemon.Genome
+    newGenome.ID = generateRandomString(len(daemon.Genome.ID))
+
+    childGenome := daemon.MutateGenome(newGenome)
     daemon.Env.SendSignal(SPAWN, childGenome)
+}
+
+func (daemon *Daemon) State() (tokens int, lastHeld int) {
+	daemon.mtx.RLock()
+	defer daemon.mtx.RUnlock()
+
+	return daemon.CurrentTokens, daemon.LastHeldTokens
+}
+
+func (daemon *Daemon) SetTokens(tokens int, tick int) {
+	daemon.mtx.Lock()
+	defer daemon.mtx.Unlock()
+
+	daemon.CurrentTokens = tokens
+	if tokens > 0 {
+		daemon.LastHeldTokens = tick
+	}
+}
+
+func (daemon *Daemon) ClearTokens(tick int) {
+	daemon.mtx.Lock()
+	defer daemon.mtx.Unlock()
+
+	daemon.CurrentTokens = 0
+    daemon.LastHeldTokens = tick
+}
+
+
+func (daemon *Daemon) Tick(ctx context.Context, tick int) {
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
+    currentTokens, lastHeldTokens := daemon.State()
+
+	if currentTokens == 0 {
+		daemon.Env.SendSignal(REQUEST_CPU, []interface{}{
+			daemon.Genome.ID,
+			daemon.Genome.CPUHunger,
+		})
+		return
+	}
+
+	if tick - lastHeldTokens >= daemon.Genome.MinimumHoldTime {
+		daemon.Replicate()
+
+		probablyExecute(CPU_RELEASE_PROB, func() {
+			daemon.Env.SendSignal(RELEASE_CPU, daemon.Genome.ID)
+		})
+		return
+	}
+
+	daemon.mtx.Lock()
+    daemon.LastHeldTokens = tick
+    daemon.mtx.Unlock()
 }

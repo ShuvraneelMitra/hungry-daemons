@@ -1,14 +1,20 @@
 package main
 
 import (
-	// "time"
-	// "fmt"
-
-	"github.com/ShuvraneelMitra/hungry-daemons/gui"
-	// "github.com/ShuvraneelMitra/hungry-daemons/profiler"
+	"time"
+	"github.com/ShuvraneelMitra/hungry-daemons/world"
 )
 
-func main(){
-	gui.Run()
-	// time.NewTicker(time.Second / time.Duration(cfg.Env.TicksPerS))
+func main() {
+	ticker := time.NewTicker(time.Second / 2)
+
+	w := world.NewWorld(
+		"../config.toml",
+		ticker,
+	)
+
+	w.Initialize()
+	w.Run(10)
+
+	<-w.Done()
 }

@@ -14,6 +14,7 @@ const (
 	KILL EventType = iota
 	RELEASE_CPU
 	SPAWN
+	REQUEST_CPU
 )
 
 type Event struct {
