@@ -3,7 +3,6 @@ package world
 import (
 	"context"
 	"fmt"
-	"math/rand/v2"
 	"os"
 	"sync"
 	"time"
@@ -22,18 +21,39 @@ type EventHandler func(world *World, data any)
 var (
 	once, initializeOnce sync.Once
 	cfg struct {
-		Env struct{
+		Env struct {
 			InitPop   int `toml:"initial_population"`
 			MaxPop    int `toml:"max_population"`
 			SimTicks  int `toml:"simulation_ticks"`
 			MaxCPU    int `toml:"max_cpu_tokens"`
 			LifeExp   int `toml:"life_expectancy"`
+			Fertility int `toml:"fertility_rate"`
 			TicksPerS int `toml:"ticks_per_s"`
 		} `toml:"env"`
+
+		Genome struct {
+			MinCPUHunger int `toml:"min_cpu_hunger"`
+			MaxCPUHunger int `toml:"max_cpu_hunger"`
+
+			MinReplicationRate int `toml:"min_replication_rate"`
+			MaxReplicationRate int `toml:"max_replication_rate"`
+
+			MinMutationChance float64 `toml:"min_mutation_chance"`
+			MaxMutationChance float64 `toml:"max_mutation_chance"`
+
+			MinLifeWithoutFood int `toml:"min_life_without_food"`
+			MaxLifeWithoutFood int `toml:"max_life_without_food"`
+
+			MinLifespanRatio float64 `toml:"min_lifespan_ratio"`
+			MaxLifespanRatio float64 `toml:"max_lifespan_ratio"`
+
+			MinHoldTime int `toml:"min_hold_time"`
+			MaxHoldTime int `toml:"max_hold_time"`
+		} `toml:"genome"`
 	}
 	handlerTable = map[EventType]EventHandler{
 		KILL: func(world *World, data any) {
-				info, ok := data.([]interface{})
+				info, ok := data.([]any)
 				if !ok {
 					return 
 				}
@@ -47,9 +67,9 @@ var (
 						world.ReleaseCpu(daemonId)
 					},
 		SPAWN : func(world *World, data any) {
-					genome, ok := data.(Genome)
+					info, ok := data.([]any)
 					if !ok { return }
-					world.Spawn(genome, world.CurrentTick())
+					world.Spawn(info[0].(Genome), info[1].(int), world.CurrentTick())
 				},
 
 		REQUEST_CPU : func(world *World, data any) {
@@ -199,24 +219,32 @@ func (world *World) Initialize(){
 					continue
 				}
 				
+
+				minLifespan := int(float64(world.lifeExpectancy) * cfg.Genome.MinLifespanRatio)
+				maxLifespan := int(float64(world.lifeExpectancy) * cfg.Genome.MaxLifespanRatio)
+
 				genome := Genome{
-					ID               : id,
-					Surname          : surname,
-					ReplicationRate  : rand.Float64(),
-					CPUHunger        : rand.IntN(cfg.Env.MaxCPU),
-					MutationChance   : rand.Float64(),
-					LifeWithoutFood  : rand.IntN(world.lifeExpectancy) + 1,
-					MinimumLifespan  : rand.IntN(world.lifeExpectancy),
-					MinimumHoldTime  : rand.IntN(world.lifeExpectancy),
-					InstructionSet   : nil,
+					ID                : id,
+					Surname           : surname,
+
+					ReplicationRate   : randomIntRange(cfg.Genome.MinReplicationRate, cfg.Genome.MaxReplicationRate),
+					CPUHunger         : randomIntRange(cfg.Genome.MinCPUHunger, cfg.Genome.MaxCPUHunger),
+					MutationChance    : randomFloatRange(cfg.Genome.MinMutationChance, cfg.Genome.MaxMutationChance),
+					LifeWithoutFood   : randomIntRange(cfg.Genome.MinLifeWithoutFood, cfg.Genome.MaxLifeWithoutFood),
+					MinimumLifespan   : randomIntRange(minLifespan, maxLifespan),
+					MinimumHoldTime   : randomIntRange(cfg.Genome.MinHoldTime, cfg.Genome.MaxHoldTime),
+
+					InstructionSet: nil,
 				}
+
 				world.organisms[id] = &Daemon{
 					Genome        : genome,
+					Generation    : 0,
 					CurrentTokens : 0,
 					CreatedTick   : world.currentTick,
-					LastHeldTokens: -1,
+					LastHeldTokens: world.currentTick,
 					 
-				    mtx           : world.mtx,
+				    mtx           : &sync.RWMutex{},
 
 					Env           : world,
 					Channel       : make(chan Event),
@@ -259,6 +287,82 @@ func (world *World) Run(simTicks int) {
 	}()
 }
 
+func (world *World) ValidateInvariants() error {
+	world.mtx.RLock()
+	defer world.mtx.RUnlock()
+
+	if world.numOrganisms != len(world.organisms) {
+		return fmt.Errorf(
+			"invariant failed: numOrganisms=%d but len(organisms)=%d",
+			world.numOrganisms,
+			len(world.organisms),
+		)
+	}
+
+	if world.numOrganisms < 0 {
+		return fmt.Errorf("invariant failed: numOrganisms is negative: %d", world.numOrganisms)
+	}
+
+	if world.numFreeTokens < 0 {
+		return fmt.Errorf("invariant failed: numFreeTokens is negative: %d", world.numFreeTokens)
+	}
+
+	if world.numFreeTokens > cfg.Env.MaxCPU {
+		return fmt.Errorf(
+			"invariant failed: numFreeTokens=%d exceeds max CPU tokens=%d",
+			world.numFreeTokens,
+			cfg.Env.MaxCPU,
+		)
+	}
+
+	if world.numOrganisms > cfg.Env.MaxPop {
+		return fmt.Errorf(
+			"invariant failed: numOrganisms=%d exceeds max population=%d",
+			world.numOrganisms,
+			cfg.Env.MaxPop,
+		)
+	}
+
+	totalHeldTokens := 0
+
+	for id, daemon := range world.organisms {
+		if daemon == nil {
+			return fmt.Errorf("invariant failed: daemon %s is nil", id)
+		}
+
+		currentTokens, _ := daemon.State()
+
+		if currentTokens < 0 {
+			return fmt.Errorf(
+				"invariant failed: daemon %s has negative tokens: %d",
+				id,
+				currentTokens,
+			)
+		}
+
+		if currentTokens > cfg.Env.MaxCPU {
+			return fmt.Errorf(
+				"invariant failed: daemon %s has tokens=%d exceeding max CPU=%d",
+				id,
+				currentTokens,
+				cfg.Env.MaxCPU,
+			)
+		}
+
+		totalHeldTokens += currentTokens
+	}
+
+	if world.numFreeTokens+totalHeldTokens > cfg.Env.MaxCPU {
+		return fmt.Errorf(
+			"invariant failed: free tokens + held tokens = %d, exceeds max CPU tokens=%d",
+			world.numFreeTokens+totalHeldTokens,
+			cfg.Env.MaxCPU,
+		)
+	}
+
+	return nil
+}
+
 // -------------------- ALL THE HELPER/FACTORY FUNCTIONS ------------------
 
 func (world *World) AllocateTokens(daemonId string, tokens int) int {
@@ -291,7 +395,11 @@ func (world *World) broadcastTick(tick int) {
 	}()
 
 	for _, daemon := range world.organisms {
-		daemon.TickC <- tick
+		select {
+			case daemon.TickC <- tick:
+			default:
+				// daemon missed this tick
+		}
 	}
 }
 
@@ -326,14 +434,17 @@ func (world *World) handleRequest(event Event) {
 
 func (world *World) Kill(daemonId string, reason DeathType) {
 	world.mtx.Lock()
-
 	daemon, ok := world.organisms[daemonId]
 	if !ok {
 		world.mtx.Unlock()
 		return
 	}
+	world.mtx.Unlock()
 
-	world.numFreeTokens += daemon.CurrentTokens
+	tokens, _ := daemon.State()
+
+	world.mtx.Lock()
+	world.numFreeTokens += tokens
 	world.numOrganisms--
 	delete(world.organisms, daemonId)
 	world.mtx.Unlock()
@@ -353,8 +464,12 @@ func (world *World) ReleaseCpu(daemonId string) {
 		world.mtx.Unlock()
 		return
 	}
+	world.mtx.Unlock()
 
-	world.numFreeTokens += daemon.CurrentTokens
+	tokens, _ := daemon.State()
+
+	world.mtx.Lock()
+	world.numFreeTokens += tokens
 	world.mtx.Unlock()
 
 	daemon.ClearTokens(world.currentTick)
@@ -383,7 +498,7 @@ func (world *World) Shutdown(){
 	})
 }
 
-func (world *World) Spawn(genome Genome, tick int) {
+func (world *World) Spawn(genome Genome, generation int, tick int) {
 	world.mtx.Lock()
 
 	if world.numOrganisms >= world.maxPop {
@@ -392,6 +507,7 @@ func (world *World) Spawn(genome Genome, tick int) {
 	}
 
 	daemon := NewDaemon(genome, world, tick)
+	daemon.Generation = generation
 
 	if _, exists := world.organisms[genome.ID]; exists {
 		world.mtx.Unlock()
@@ -403,6 +519,7 @@ func (world *World) Spawn(genome Genome, tick int) {
 	world.numOrganisms++
 	world.mtx.Unlock()
 
+	world.stats.TrackBirth(genome.Surname)
 	world.wg.Go(func() { daemon.Run(world.ctx) })
 }
 
@@ -410,6 +527,7 @@ func (world *World) Tick(ctx context.Context) {
 	world.mtx.Lock()
 	world.currentTick++
 	fmt.Println("Tick number ", world.currentTick)
+	fmt.Println("Population ", world.numOrganisms)
 	currentTick := world.currentTick
 	population := world.numOrganisms
 	world.mtx.Unlock()
@@ -463,7 +581,19 @@ func (world *World) Tick(ctx context.Context) {
 	}
 
 	done:
+		world.mtx.RLock()
+		if world.numOrganisms == 0 {
+			fmt.Println("Population died out! World ends here")
+			world.mtx.RUnlock()
+			world.Shutdown()
+		} else {
+			world.mtx.RUnlock()
+		}
 		world.stats.UpdateMetrics()
+
+		if err := world.ValidateInvariants(); err != nil {
+			panic(err)
+		}
 		wg.Wait()
 }
 

@@ -1,6 +1,8 @@
 package world
 
-import "math/rand/v2"
+import (
+	"math/rand/v2"
+)
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
@@ -49,4 +51,20 @@ func maxInt(value, min int) int {
 		return min
 	}
 	return value
+}
+
+func randomIntRange(minVal, maxVal int) int {
+	if maxVal <= minVal {
+		return minVal
+	}
+
+	return rand.IntN(maxVal-minVal+1) + minVal
+}
+
+func randomFloatRange(minVal, maxVal float64) float64 {
+	if maxVal <= minVal {
+		return minVal
+	}
+
+	return minVal + rand.Float64()*(maxVal-minVal)
 }

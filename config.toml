@@ -1,9 +1,29 @@
 # Configuration file for the hungry-daemons project
 
 [env]
-initial_population  =  10
-max_population      =  500
-simulation_ticks    =  100
-max_cpu_tokens      =  100
-life_expectancy     =  20
-ticks_per_s         =  2
+initial_population    = 40
+max_population        = 500
+simulation_ticks      = 1000
+max_cpu_tokens        = 100
+life_expectancy       = 200
+fertility_rate        = 4
+ticks_per_s           = 10
+
+[genome]
+min_cpu_hunger        = 1
+max_cpu_hunger        = 5
+
+min_replication_rate  = 1
+max_replication_rate  = 4
+
+min_mutation_chance   = 0.03
+max_mutation_chance   = 0.12
+
+min_life_without_food = 15
+max_life_without_food = 40
+
+min_lifespan_ratio    = 0.60
+max_lifespan_ratio    = 1.00
+
+min_hold_time         = 1
+max_hold_time         = 4

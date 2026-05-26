@@ -8,7 +8,8 @@ import (
 )
 
 const (
-    CPU_RELEASE_PROB = 0.8
+    CPU_RELEASE_PROB = 0.9
+	REPLICATION_PROB = 0.9
 )
 
 type Instruction struct {
@@ -21,7 +22,7 @@ type Instruction struct {
 type Genome struct {
     ID              string
     Surname         string
-    ReplicationRate float64
+    ReplicationRate int
     CPUHunger       int
     MutationChance  float64
     MinimumHoldTime int // how long it holds on to CPU tokens before releasing
@@ -32,6 +33,7 @@ type Genome struct {
 
 type Daemon struct {
     Genome             Genome
+	Generation         int
     CurrentTokens      int
     CreatedTick        int // essentially Birthday!
     LastHeldTokens     int // tick
@@ -46,9 +48,10 @@ type Daemon struct {
 func NewDaemon(genome Genome, world Environment, tick int) *Daemon {
     daemon := &Daemon{ 
         Genome        : genome,
+		Generation    : 0,
         CurrentTokens : 0,
         CreatedTick   : tick,
-        LastHeldTokens: -1,
+        LastHeldTokens: tick,
 
 		mtx           : &sync.RWMutex{},
 
@@ -68,7 +71,7 @@ func (daemon *Daemon) MutateGenome(parent Genome) Genome {
 	child := parent
 
 	probablyExecute(parent.MutationChance, func() {
-		child.ReplicationRate *= randomScale()
+		child.ReplicationRate *= mutateInt(parent.ReplicationRate)
 		child.MutationChance *= randomScale()
 
 		child.CPUHunger = mutateInt(parent.CPUHunger)
@@ -105,7 +108,9 @@ func (daemon *Daemon) Replicate() {
     newGenome.ID = generateRandomString(len(daemon.Genome.ID))
 
     childGenome := daemon.MutateGenome(newGenome)
-    daemon.Env.SendSignal(SPAWN, childGenome)
+    daemon.Env.SendSignal(SPAWN, []any{
+		childGenome, daemon.Generation + 1,
+	})
 }
 
 func (daemon *Daemon) State() (tokens int, lastHeld int) {
@@ -144,7 +149,7 @@ func (daemon *Daemon) Tick(ctx context.Context, tick int) {
     currentTokens, lastHeldTokens := daemon.State()
 
 	if currentTokens == 0 {
-		daemon.Env.SendSignal(REQUEST_CPU, []interface{}{
+		daemon.Env.SendSignal(REQUEST_CPU, []any{
 			daemon.Genome.ID,
 			daemon.Genome.CPUHunger,
 		})
@@ -152,7 +157,11 @@ func (daemon *Daemon) Tick(ctx context.Context, tick int) {
 	}
 
 	if tick - lastHeldTokens >= daemon.Genome.MinimumHoldTime {
-		daemon.Replicate()
+		probablyExecute(REPLICATION_PROB, func() {
+			for range daemon.Genome.ReplicationRate {
+				daemon.Replicate()
+			}
+		})
 
 		probablyExecute(CPU_RELEASE_PROB, func() {
 			daemon.Env.SendSignal(RELEASE_CPU, daemon.Genome.ID)
