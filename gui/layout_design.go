@@ -6,6 +6,8 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/ShuvraneelMitra/hungry-daemons/graphs"
 )
 
 type Header struct {
@@ -28,6 +30,8 @@ type guiLayout struct {
 	statusBar *StatusBar
 	header *Header
 	footer fyne.CanvasObject
+
+	graph *graphs.LiveGraph
 
 	tabs *container.AppTabs
 	logsView  *widget.Entry
@@ -110,7 +114,8 @@ func getLayout() *guiLayout {
     top := widget.NewLabel("MainWindow")
 	bottom := getStatusBar()
 
-	dashboardView := top
+	graph := graphs.NewLiveGraph(200)
+	dashboardView := container.NewMax(graph)
 
 	logsView := widget.NewMultiLineEntry()
 	logsView.SetText("Daemon logs...\n\n")
@@ -156,6 +161,7 @@ func getLayout() *guiLayout {
 		view: compiledContainer,
 		header: header,
 		footer: themedFooter,
+		graph: graph,
 		tabs: tabs,
 		logsView: logsView,
 		metricsView: metricsView,

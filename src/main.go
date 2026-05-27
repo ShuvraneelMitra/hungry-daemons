@@ -13,7 +13,7 @@ func main() {
 	defer cancel()
 	wg := sync.WaitGroup{}
 
-	cfg := world.ParseConfig("../config.toml")
+	cfg := world.ParseConfig("../configs/config.toml")
 	earth, msgChannel := world.NewWorld(cfg)
 
 	wg.Go(func(){
@@ -23,6 +23,6 @@ func main() {
 		<-earth.Done()
 	})
 
-	gui.Run(msgChannel, cancel)
+	gui.Run(msgChannel, earth.GetPopChan(), cancel)
 	wg.Wait()
 }

@@ -358,6 +358,10 @@ func (world *World) GetOrganism(id string) (*Daemon, bool) {
 	return daemon, ok
 }
 
+func (world *World) GetPopChan() chan float64 {
+	return world.stats.FloatChannel
+}
+
 func (world *World) GetPopulation() int {
 	world.mtx.RLock()
 	defer world.mtx.RUnlock()
@@ -704,6 +708,8 @@ func (world *World) UpdateMetrics() {
 
 	world.stats.SetCPUHungerRange(minCPUHunger, maxCPUHunger)
 	world.stats.SetDominantLineage(dominantLineage, dominantCount)
+
+	world.stats.FloatChannel<-float64(population)
 }
 
 

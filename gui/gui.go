@@ -12,7 +12,8 @@ const (
 	WINDOW_HEIGHT = 615
 )
 
-func Run(msgChannel <-chan string, cancel context.CancelFunc) {
+func Run(msgChannel <-chan string, floatChannel <-chan float64,
+		cancel context.CancelFunc) {
 	newApp := app.New()
 	win := newApp.NewWindow("Hungry-Daemons")
 	win.SetMaster()
@@ -27,6 +28,7 @@ func Run(msgChannel <-chan string, cancel context.CancelFunc) {
 	updateTime(layout)
 	updateStatus(layout)
 	updateLogs(layout, msgChannel)
+	updateGraph(layout, floatChannel)
 
 	win.SetOnClosed(func() {
 		cancel()

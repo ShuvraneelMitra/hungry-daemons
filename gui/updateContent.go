@@ -58,3 +58,15 @@ func updateLogs(layout *guiLayout, msgChannel <-chan string) {
 		}
 	}()
 }
+
+func updateGraph(layout *guiLayout, points <-chan float64) {
+	go func() {
+		for p := range points {
+			value := p
+
+			fyne.Do(func() {
+				layout.graph.AddPoint(value)
+			})
+		}
+	}()
+}

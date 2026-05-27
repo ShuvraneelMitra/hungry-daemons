@@ -1,0 +1,30 @@
+# Configuration file for the hungry-daemons project
+[env]
+initial_population     = 100
+max_population         = 500
+simulation_ticks       = 2000
+max_cpu_tokens         = 1200
+life_expectancy        = 400
+ticks_per_s            = 10
+
+[genome]
+min_cpu_hunger         = 1
+max_cpu_hunger         = 1
+
+min_replication_rate   = 4
+max_replication_rate   = 8
+
+min_mutation_chance    = 0.02
+max_mutation_chance    = 0.18
+
+min_life_without_food  = 8
+max_life_without_food  = 28
+
+min_lifespan_ratio     = 0.35
+max_lifespan_ratio     = 0.90
+
+min_hold_time          = 3
+max_hold_time          = 6
+
+# EDITORS SORTIED ROISTED STORIED TRIODES
+# NITREOUS

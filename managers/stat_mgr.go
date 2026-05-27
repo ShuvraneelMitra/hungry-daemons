@@ -35,16 +35,18 @@ type Stats struct {
 
     totalDeathAge          int
 
-	MinCPUHunger int
-	MaxCPUHunger int
+	MinCPUHunger           int
+	MaxCPUHunger           int
 
-	DominantLineageID    string
-	DominantLineageCount int
+	DominantLineageID      string
+	DominantLineageCount   int
 
-	AvgFreeCPUTokens float64
+	AvgFreeCPUTokens       float64
 
 	totalFreeTokensObserved int
 	tokenObservationCount   int
+
+	FloatChannel           chan float64
 }
 
 // thankfully no Mutexes in this file since the statistics object will only 
@@ -54,6 +56,7 @@ func CreateStats() *Stats {
 	onceStat.Do(func(){
 		stats = &Stats{
 			DeathsByType: make(map[DeathType]int),
+			FloatChannel: make(chan float64),
 		}
 	})
 	return stats

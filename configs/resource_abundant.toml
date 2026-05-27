@@ -1,0 +1,26 @@
+[env]
+initial_population    = 50
+max_population        = 20000
+simulation_ticks      = 300
+max_cpu_tokens        = 100000
+life_expectancy       = 100
+ticks_per_s           = 30
+
+[genome]
+min_cpu_hunger        = 1
+max_cpu_hunger        = 10
+
+min_replication_rate  = 5
+max_replication_rate  = 20
+
+min_mutation_chance   = 0.01
+max_mutation_chance   = 0.05
+
+min_life_without_food = 100
+max_life_without_food = 300
+
+min_lifespan_ratio    = 0.90
+max_lifespan_ratio    = 1.00
+
+min_hold_time         = 1
+max_hold_time         = 2
