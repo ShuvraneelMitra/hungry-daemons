@@ -13,3 +13,7 @@
 ### Something on waitgroups
 
 [Blog Link](https://victoriametrics.com/blog/go-sync-waitgroup/)
+
+### Strings and runes!
+
+[Go Dev Blog](https://go.dev/blog/strings)

@@ -165,3 +165,59 @@ func getThemedHeaderandFooter(obj fyne.CanvasObject) *container.ThemeOverride {
 	theme := NewBorderTheme()
 	return container.NewThemeOverride(obj, theme)
 }
+
+// --------------------------------- TABS THEME --------------------------------
+
+type TabsTheme struct{}
+
+func (t *TabsTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	switch name {
+	case theme.ColorNameBackground:
+		return color.RGBA{R: 0, G: 0, B: 0, A: 255}
+
+	case theme.ColorNameForeground:
+		return color.RGBA{R: 255, G: 255, B: 255, A: 255}
+
+	case theme.ColorNamePrimary:
+		return LAVENDER
+
+	case theme.ColorNameButton:
+		return color.RGBA{R: 30, G: 30, B: 30, A: 255}
+
+	case theme.ColorNameHover:
+		return color.RGBA{R: 167, G: 143, B: 255, A: 40}
+
+	case theme.ColorNameFocus:
+		return color.RGBA{R: 167, G: 143, B: 255, A: 120}
+
+	default:
+		return theme.DefaultTheme().Color(name, variant)
+	}
+}
+
+func (t *TabsTheme) Font(style fyne.TextStyle) fyne.Resource {
+	return theme.DefaultTheme().Font(style)
+}
+
+func (t *TabsTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return theme.DefaultTheme().Icon(name)
+}
+
+func (t *TabsTheme) Size(name fyne.ThemeSizeName) float32 {
+	switch name {
+	case theme.SizeNamePadding:
+		return 2
+	case theme.SizeNameText:
+		return 12
+	default:
+		return theme.DefaultTheme().Size(name)
+	}
+}
+
+func NewTabsTheme() fyne.Theme {
+	return &TabsTheme{}
+}
+
+func getThemedTabs(obj fyne.CanvasObject) *container.ThemeOverride {
+	return container.NewThemeOverride(obj, NewTabsTheme())
+}

@@ -2,29 +2,27 @@ package main
 
 import (
 	"sync"
-	"time"
+	"context"
 
 	"github.com/ShuvraneelMitra/hungry-daemons/gui"
 	"github.com/ShuvraneelMitra/hungry-daemons/world"
 )
 
 func main() {
-	ticker := time.NewTicker(time.Second / 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wg := sync.WaitGroup{}
 
-	s := sync.WaitGroup{}
+	cfg := world.ParseConfig("../config.toml")
+	earth, msgChannel := world.NewWorld(cfg)
 
-	s.Go(func(){
-		w := world.NewWorld(
-			"../config.toml",
-			ticker,
-		)
+	wg.Go(func(){
+		earth.Initialize(cfg)
+		earth.Run(ctx, cfg.Env.SimTicks)
 
-		w.Initialize()
-		w.Run(100)
-
-		<-w.Done()
+		<-earth.Done()
 	})
 
-	gui.Run()
-	s.Wait()
+	gui.Run(msgChannel, cancel)
+	wg.Wait()
 }

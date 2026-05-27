@@ -10,7 +10,9 @@ import (
 const (
     CPU_RELEASE_PROB = 0.9
 	REPLICATION_PROB = 0.9
-)
+	ID_LENGTH  = 10
+	DEATH_PROB = 0.4 // Probability that at the current ticker if age > lifeExpectancy the organism dies
+) 
 
 type Instruction struct {
 	Operation string
@@ -71,8 +73,8 @@ func (daemon *Daemon) MutateGenome(parent Genome) Genome {
 	child := parent
 
 	probablyExecute(parent.MutationChance, func() {
-		child.ReplicationRate *= mutateInt(parent.ReplicationRate)
-		child.MutationChance *= randomScale()
+		child.ReplicationRate = mutateInt(parent.ReplicationRate)
+		child.MutationChance = randomScale()
 
 		child.CPUHunger = mutateInt(parent.CPUHunger)
 		child.MinimumLifespan = mutateInt(parent.MinimumLifespan)

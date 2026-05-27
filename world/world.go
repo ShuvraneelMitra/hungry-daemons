@@ -3,54 +3,20 @@ package world
 import (
 	"context"
 	"fmt"
-	"os"
+	"maps"
+	"math"
 	"sync"
 	"time"
 
 	. "github.com/ShuvraneelMitra/hungry-daemons/managers"
-	"github.com/pelletier/go-toml/v2"
 )
 
-const(
-	ID_LENGTH  = 10
-	DEATH_PROB = 0.4 // Probability that at the current ticker if age > lifeExpectancy the organism dies
-) 
+const BUFFER_SZ  = 100
 
 type EventHandler func(world *World, data any)
 
 var (
 	once, initializeOnce sync.Once
-	cfg struct {
-		Env struct {
-			InitPop   int `toml:"initial_population"`
-			MaxPop    int `toml:"max_population"`
-			SimTicks  int `toml:"simulation_ticks"`
-			MaxCPU    int `toml:"max_cpu_tokens"`
-			LifeExp   int `toml:"life_expectancy"`
-			Fertility int `toml:"fertility_rate"`
-			TicksPerS int `toml:"ticks_per_s"`
-		} `toml:"env"`
-
-		Genome struct {
-			MinCPUHunger int `toml:"min_cpu_hunger"`
-			MaxCPUHunger int `toml:"max_cpu_hunger"`
-
-			MinReplicationRate int `toml:"min_replication_rate"`
-			MaxReplicationRate int `toml:"max_replication_rate"`
-
-			MinMutationChance float64 `toml:"min_mutation_chance"`
-			MaxMutationChance float64 `toml:"max_mutation_chance"`
-
-			MinLifeWithoutFood int `toml:"min_life_without_food"`
-			MaxLifeWithoutFood int `toml:"max_life_without_food"`
-
-			MinLifespanRatio float64 `toml:"min_lifespan_ratio"`
-			MaxLifespanRatio float64 `toml:"max_lifespan_ratio"`
-
-			MinHoldTime int `toml:"min_hold_time"`
-			MaxHoldTime int `toml:"max_hold_time"`
-		} `toml:"genome"`
-	}
 	handlerTable = map[EventType]EventHandler{
 		KILL: func(world *World, data any) {
 				info, ok := data.([]any)
@@ -98,6 +64,7 @@ type World struct {
 	ticksPerS      int
 	currentTick    int
 	maxPop         int
+	maxCPU         int
 
     organisms      map[string]*Daemon
 	mtx            *sync.RWMutex
@@ -111,6 +78,7 @@ type World struct {
 	done           chan struct{}
 
 	stats          *Stats
+	ChannelToUI     chan string
 }
 
 //------------------------ THREAD-SAFETY -----------------------------
@@ -127,9 +95,8 @@ type organismSnapshot struct {
 func (world *World) snapshotOrganisms() []organismSnapshot {
 	world.mtx.RLock()
 	daemons := make(map[string]*Daemon, len(world.organisms))
-	for id, daemon := range world.organisms {
-		daemons[id] = daemon
-	}
+	maps.Copy(daemons, world.organisms)
+
 	world.mtx.RUnlock()
 
 	snapshot := make([]organismSnapshot, 0, len(daemons))
@@ -150,22 +117,7 @@ func (world *World) snapshotOrganisms() []organismSnapshot {
 
 //----------------- MOST IMPORTANT FUNCTIONS -------------------------
 
-func NewWorld(configFile string, ticker *time.Ticker) *World {
-	once.Do(func(){
-		content, err := os.ReadFile(configFile)
-		if err != nil {
-			panic("Error reading file: " + err.Error())
-		}
-
-		if err := toml.Unmarshal(content, &cfg); err != nil {
-			panic("Error parsing TOML: " + err.Error())
-		}
-	})
-
-	if(cfg.Env.TicksPerS == 0) {
-		panic("ticks_per_second == 0 in config file, world stopped!")
-	}
-
+func NewWorld(cfg Config) (*World, chan string) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	world := &World{
@@ -175,13 +127,14 @@ func NewWorld(configFile string, ticker *time.Ticker) *World {
 		ticksPerS     : cfg.Env.TicksPerS,
 		currentTick   : 0,
 		maxPop        : cfg.Env.MaxPop,
+		maxCPU        : cfg.Env.MaxCPU,
 
 		mtx           : &sync.RWMutex{},
 		wg            : &sync.WaitGroup{},
 
 		eventMgr      : NewEventManager(),
 		organisms     : make(map[string]*Daemon),
-		ticker        : ticker,
+		ticker        : time.NewTicker(time.Second / time.Duration(cfg.Env.TicksPerS)),
 		reqChannel    : make(chan Event, cfg.Env.MaxPop + 1),
 		ctx           : ctx,
 		cancelFunc    : cancel,
@@ -189,6 +142,7 @@ func NewWorld(configFile string, ticker *time.Ticker) *World {
 		done          : make(chan struct{}),
 
 		stats         : CreateStats(),
+		ChannelToUI    : make(chan string, BUFFER_SZ),
 	}
 
 	// SUBSCRIBE TO EVENTS
@@ -196,10 +150,10 @@ func NewWorld(configFile string, ticker *time.Ticker) *World {
 	world.eventMgr.Subscribe(RELEASE_CPU, world.reqChannel)
 	world.eventMgr.Subscribe(SPAWN, world.reqChannel)
 	world.eventMgr.Subscribe(REQUEST_CPU, world.reqChannel)
-	return world
+	return world, world.ChannelToUI
 }
 
-func (world *World) Initialize(){
+func (world *World) Initialize(cfg Config){
 	initializeOnce.Do(
 		func(){	
 			world.mtx.Lock()
@@ -237,19 +191,7 @@ func (world *World) Initialize(){
 					InstructionSet: nil,
 				}
 
-				world.organisms[id] = &Daemon{
-					Genome        : genome,
-					Generation    : 0,
-					CurrentTokens : 0,
-					CreatedTick   : world.currentTick,
-					LastHeldTokens: world.currentTick,
-					 
-				    mtx           : &sync.RWMutex{},
-
-					Env           : world,
-					Channel       : make(chan Event),
-					TickC 		  : make(chan int, 1),
-				}
+				world.organisms[id] = NewDaemon(genome, world, world.currentTick)
 
 				world.stats.TrackBirth(world.organisms[id].Genome.Surname)	
 
@@ -260,7 +202,7 @@ func (world *World) Initialize(){
 		})
 }
 
-func (world *World) Run(simTicks int) {
+func (world *World) Run(extCtx context.Context, simTicks int) {
 	go func() {
 		for _, daemon := range world.organisms {
 			temp_daemon := daemon
@@ -270,6 +212,10 @@ func (world *World) Run(simTicks int) {
 		for {
 			select {
 				case <-world.ctx.Done():
+					world.Shutdown()
+					return
+				
+				case <-extCtx.Done():
 					world.Shutdown()
 					return
 
@@ -307,19 +253,11 @@ func (world *World) ValidateInvariants() error {
 		return fmt.Errorf("invariant failed: numFreeTokens is negative: %d", world.numFreeTokens)
 	}
 
-	if world.numFreeTokens > cfg.Env.MaxCPU {
+	if world.numFreeTokens > world.maxCPU {
 		return fmt.Errorf(
 			"invariant failed: numFreeTokens=%d exceeds max CPU tokens=%d",
 			world.numFreeTokens,
-			cfg.Env.MaxCPU,
-		)
-	}
-
-	if world.numOrganisms > cfg.Env.MaxPop {
-		return fmt.Errorf(
-			"invariant failed: numOrganisms=%d exceeds max population=%d",
-			world.numOrganisms,
-			cfg.Env.MaxPop,
+			world.maxCPU,
 		)
 	}
 
@@ -340,23 +278,23 @@ func (world *World) ValidateInvariants() error {
 			)
 		}
 
-		if currentTokens > cfg.Env.MaxCPU {
+		if currentTokens > world.maxCPU {
 			return fmt.Errorf(
 				"invariant failed: daemon %s has tokens=%d exceeding max CPU=%d",
 				id,
 				currentTokens,
-				cfg.Env.MaxCPU,
+				world.maxCPU,
 			)
 		}
 
 		totalHeldTokens += currentTokens
 	}
 
-	if world.numFreeTokens+totalHeldTokens > cfg.Env.MaxCPU {
+	if world.numFreeTokens + totalHeldTokens > world.maxCPU {
 		return fmt.Errorf(
 			"invariant failed: free tokens + held tokens = %d, exceeds max CPU tokens=%d",
 			world.numFreeTokens+totalHeldTokens,
-			cfg.Env.MaxCPU,
+			world.maxCPU,
 		)
 	}
 
@@ -449,11 +387,107 @@ func (world *World) Kill(daemonId string, reason DeathType) {
 	delete(world.organisms, daemonId)
 	world.mtx.Unlock()
 
-	world.stats.TrackDeath(reason)
+	world.stats.TrackDeath(reason, daemon.Age())
 
 	close(daemon.Channel)
 	close(daemon.TickC)
 	daemon.ClearTokens(world.currentTick)
+}
+
+func (world *World) PrintMetrics() {
+	stats := world.stats
+
+	var statistics string
+	if world.numOrganisms > 0 {
+		statistics = fmt.Sprintf(
+	`
+	----------- FINAL POPULATION METRICS ---------------
+	Ticks                    : %d
+
+	Population               : %d
+
+	Total Births             : %d
+	Total Deaths             : %d
+
+	Deaths By Age            : %d
+	Deaths By Starvation     : %d
+
+	Average CPU Hunger       : %.4f
+	Average Replication Rate : %.4f
+	Average Mutation Chance  : %.4f
+	Average MinLifespan      : %.4f
+	Average Current Age      : %.4f
+	Average Death Age        : %.4f
+
+	Minimum CPU Hunger       : %d
+	Maximum CPU Hunger       : %d
+
+	Dominant Lineage ID      : %s
+	Dominant Lineage Count   : %d
+
+	Average Free CPU Tokens  : %.4f
+
+	=======================================================
+	`,
+			stats.TotalTicks,
+
+			world.numOrganisms,
+
+			stats.TotalBirths,
+			stats.TotalDeaths,
+
+			stats.DeathsByType[DeathAge],
+			stats.DeathsByType[DeathStarvation],
+			
+			stats.AvgCPUHunger,
+			stats.AvgReplicationRate,
+			stats.AvgMutationChance,
+			stats.AvgConfiguredLifespan,
+			stats.AvgAge,
+			stats.AvgDeathAge,
+
+			stats.MinCPUHunger,
+			stats.MaxCPUHunger,
+
+			stats.DominantLineageID,
+			stats.DominantLineageCount,
+
+			stats.AvgFreeCPUTokens,
+		)
+	} else {
+		statistics = fmt.Sprintf(
+		`
+		----------- FINAL POPULATION METRICS ---------------
+		Ticks                    : %d
+
+		Population               : %d
+
+		Total Births             : %d
+		Total Deaths             : %d
+
+		Deaths By Age            : %d
+		Deaths By Starvation     : %d
+
+		Average Death Age        : %.4f
+		Average Free CPU Tokens  : %.4f
+
+		=======================================================
+		`,
+				stats.TotalTicks,
+
+				world.numOrganisms,
+
+				stats.TotalBirths,
+				stats.TotalDeaths,
+
+				stats.DeathsByType[DeathAge],
+				stats.DeathsByType[DeathStarvation],
+				
+				stats.AvgDeathAge,
+				stats.AvgFreeCPUTokens,
+			)
+		}
+	world.ChannelToUI<-statistics
 }
 
 func (world *World) ReleaseCpu(daemonId string) {
@@ -473,7 +507,6 @@ func (world *World) ReleaseCpu(daemonId string) {
 	world.mtx.Unlock()
 
 	daemon.ClearTokens(world.currentTick)
-	
 }
 
 func (world *World) SendSignal(signal EventType, data any) {
@@ -495,6 +528,8 @@ func (world *World) Shutdown(){
 
 		close(world.reqChannel)
 		close(world.done)
+
+		world.PrintMetrics()
 	})
 }
 
@@ -526,10 +561,11 @@ func (world *World) Spawn(genome Genome, generation int, tick int) {
 func (world *World) Tick(ctx context.Context) {
 	world.mtx.Lock()
 	world.currentTick++
-	fmt.Println("Tick number ", world.currentTick)
-	fmt.Println("Population ", world.numOrganisms)
+
+	world.ChannelToUI<-fmt.Sprintf("Tick number %d", world.currentTick)
+	world.ChannelToUI<-fmt.Sprintf("Population %d\n", world.numOrganisms)
+
 	currentTick := world.currentTick
-	population := world.numOrganisms
 	world.mtx.Unlock()
 
 	world.broadcastTick(currentTick)
@@ -553,19 +589,19 @@ func (world *World) Tick(ctx context.Context) {
 			}
 		}
 
-		if population > world.maxPop {
-			var oldestId string
-			var oldestAge int = 0
-			for _, daemon := range organisms {
-				if daemon.age > oldestAge {
-					oldestAge = daemon.age
-					oldestId = daemon.id
-				}
-			}
-			world.eventMgr.Send(KILL, []any{
-				oldestId, DeathCulling,
-			})
-		}
+		// if population > world.maxPop {
+		// 	var oldestId string
+		// 	var oldestAge int = 0
+		// 	for _, daemon := range organisms {
+		// 		if daemon.age > oldestAge {
+		// 			oldestAge = daemon.age
+		// 			oldestId = daemon.id
+		// 		}
+		// 	}
+		// 	world.eventMgr.Send(KILL, []any{
+		// 		oldestId, DeathCulling,
+		// 	})
+		// } //This is actually a useless snippet since Spawn won't work if pop > maxpop
 	})
 
 	for {
@@ -583,13 +619,13 @@ func (world *World) Tick(ctx context.Context) {
 	done:
 		world.mtx.RLock()
 		if world.numOrganisms == 0 {
-			fmt.Println("Population died out! World ends here")
+			world.ChannelToUI<-"Population died out! World ends here\n"
 			world.mtx.RUnlock()
 			world.Shutdown()
 		} else {
 			world.mtx.RUnlock()
 		}
-		world.stats.UpdateMetrics()
+		world.UpdateMetrics()
 
 		if err := world.ValidateInvariants(); err != nil {
 			panic(err)
@@ -601,6 +637,74 @@ func (world *World) TicksPerS() int {
 	return world.ticksPerS
 }
 
+func (world *World) UpdateMetrics() {
+	world.mtx.RLock()
+	defer world.mtx.RUnlock()
+
+	population := len(world.organisms)
+
+	world.stats.AdvanceTick()
+	world.stats.ObserveFreeTokens(world.numFreeTokens)
+
+	if population == 0 {
+		world.stats.SetGenomeAverages(0, 0, 0, 0, 0)
+		world.stats.SetCPUHungerRange(0, 0)
+		world.stats.SetDominantLineage("", 0)
+		return
+	}
+
+	totalCPUHunger := 0
+	totalReplicationRate := 0
+	totalMutationChance := 0.0
+	totalLifespan := 0
+	totalAge := 0
+
+	minCPUHunger := math.MaxInt
+	maxCPUHunger := math.MinInt
+
+	lineageCounts := make(map[string]int)
+
+	for _, daemon := range world.organisms {
+		genome := daemon.Genome
+
+		totalCPUHunger += genome.CPUHunger
+		totalReplicationRate += genome.ReplicationRate
+		totalMutationChance += genome.MutationChance
+		totalLifespan += genome.MinimumLifespan
+
+		if genome.CPUHunger < minCPUHunger {
+			minCPUHunger = genome.CPUHunger
+		}
+
+		if genome.CPUHunger > maxCPUHunger {
+			maxCPUHunger = genome.CPUHunger
+		}
+
+		lineageCounts[genome.Surname]++
+		totalAge += daemon.Age()
+	}
+
+	dominantLineage := ""
+	dominantCount := 0
+
+	for lineage, count := range lineageCounts {
+		if count > dominantCount {
+			dominantLineage = lineage
+			dominantCount = count
+		}
+	}
+
+	world.stats.SetGenomeAverages(
+		float64(totalCPUHunger)/float64(population),
+		float64(totalReplicationRate)/float64(population),
+		totalMutationChance/float64(population),
+		float64(totalLifespan)/float64(population),
+		float64(totalAge) / float64(population),
+	)
+
+	world.stats.SetCPUHungerRange(minCPUHunger, maxCPUHunger)
+	world.stats.SetDominantLineage(dominantLineage, dominantCount)
+}
 
 
 

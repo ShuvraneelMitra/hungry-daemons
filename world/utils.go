@@ -2,9 +2,63 @@ package world
 
 import (
 	"math/rand/v2"
+	"os"
+	"github.com/pelletier/go-toml/v2"
 )
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+type Config struct {
+	Env struct {
+		InitPop   int `toml:"initial_population"`
+		MaxPop    int `toml:"max_population"`
+		SimTicks  int `toml:"simulation_ticks"`
+		MaxCPU    int `toml:"max_cpu_tokens"`
+		LifeExp   int `toml:"life_expectancy"`
+		TicksPerS int `toml:"ticks_per_s"`
+	} `toml:"env"`
+
+	Genome struct {
+		MinCPUHunger int `toml:"min_cpu_hunger"`
+		MaxCPUHunger int `toml:"max_cpu_hunger"`
+
+		MinReplicationRate int `toml:"min_replication_rate"`
+		MaxReplicationRate int `toml:"max_replication_rate"`
+
+		MinMutationChance float64 `toml:"min_mutation_chance"`
+		MaxMutationChance float64 `toml:"max_mutation_chance"`
+
+		MinLifeWithoutFood int `toml:"min_life_without_food"`
+		MaxLifeWithoutFood int `toml:"max_life_without_food"`
+
+		MinLifespanRatio float64 `toml:"min_lifespan_ratio"`
+		MaxLifespanRatio float64 `toml:"max_lifespan_ratio"`
+
+		MinHoldTime int `toml:"min_hold_time"`
+		MaxHoldTime int `toml:"max_hold_time"`
+	} `toml:"genome"`
+}
+
+func ParseConfig(configFile string) Config {
+	var cfg Config
+
+	once.Do(func(){
+		content, err := os.ReadFile(configFile)
+		if err != nil {
+			panic("Error reading file: " + err.Error())
+		}
+
+		if err := toml.Unmarshal(content, &cfg); err != nil {
+			panic("Error parsing TOML: " + err.Error())
+		}
+	})
+
+	if(cfg.Env.TicksPerS == 0) {
+		panic("ticks_per_second == 0 in config file, world stopped!")
+	}
+
+	return cfg
+}
 
 func generateRandomString(n int) string {
 	b := make([]byte, n)
@@ -32,8 +86,8 @@ func mutateInt(value int) int {
 		return value
 	}
 
-	change := rand.IntN(value) - value/2
-	return value + change
+	change := rand.IntN(value)
+	return value / 2 + change
 }
 
 func clampFloat(value, min, max float64) float64 {

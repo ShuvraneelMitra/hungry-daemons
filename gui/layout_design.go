@@ -29,6 +29,10 @@ type guiLayout struct {
 	header *Header
 	footer fyne.CanvasObject
 
+	tabs *container.AppTabs
+	logsView  *widget.Entry
+	metricsView *widget.Label
+
 	view *fyne.Container
 }
 
@@ -103,18 +107,37 @@ func getLayout() *guiLayout {
 
     sidebar := widget.NewLabel("Default")
 	themedSidebar := getThemedSidebar(sidebar)
-    top := widget.NewLabel("Default")
+    top := widget.NewLabel("MainWindow")
 	bottom := getStatusBar()
 
-    main_win := container.NewVSplit(
-        top,
-        container.NewPadded(bottom.view),
-    ) 
-	main_win.Offset = 0.85
+	dashboardView := top
+
+	logsView := widget.NewMultiLineEntry()
+	logsView.SetText("Daemon logs...\n\n")
+	logsView.TextStyle = fyne.TextStyle{
+		Monospace: true,
+	}
+
+	metricsView := widget.NewLabel("Metrics")
+
+	tabs := container.NewAppTabs(
+		container.NewTabItem("Dashboard", dashboardView),
+		container.NewTabItem("Logs", logsView),
+		container.NewTabItem("Metrics", metricsView),
+	)
+
+	tabs.SetTabLocation(container.TabLocationTop)
+	themedTabs := getThemedTabs(tabs)
+
+	mainWin := container.NewVSplit(
+		themedTabs,
+		container.NewPadded(bottom.view),
+	)
+	mainWin.Offset = 0.85
 
 	split := container.NewHSplit(
 		themedSidebar,
-		main_win,
+		mainWin,
 	)
 	split.Offset = 0.15
 
@@ -133,5 +156,8 @@ func getLayout() *guiLayout {
 		view: compiledContainer,
 		header: header,
 		footer: themedFooter,
+		tabs: tabs,
+		logsView: logsView,
+		metricsView: metricsView,
 	}
 }

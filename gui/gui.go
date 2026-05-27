@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"context"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 )
@@ -10,7 +12,7 @@ const (
 	WINDOW_HEIGHT = 615
 )
 
-func Run() {
+func Run(msgChannel <-chan string, cancel context.CancelFunc) {
 	newApp := app.New()
 	win := newApp.NewWindow("Hungry-Daemons")
 	win.SetMaster()
@@ -24,6 +26,11 @@ func Run() {
 	win.SetContent(layout.view)
 	updateTime(layout)
 	updateStatus(layout)
+	updateLogs(layout, msgChannel)
+
+	win.SetOnClosed(func() {
+		cancel()
+	})
 
 	win.ShowAndRun()
 }
