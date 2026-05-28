@@ -1,4 +1,4 @@
-# **Hungry Daemons**
+# **Hungry ~Daemons~ Demons**
 
 <div align="center">
   <img src="gui/icon.png" alt="Icon" width="350">
