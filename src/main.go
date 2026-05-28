@@ -13,7 +13,7 @@ func main() {
 	defer cancel()
 	wg := sync.WaitGroup{}
 
-	cfg := world.ParseConfig("../configs/config.toml")
+	cfg := world.ParseConfig("../configs/stress_test.toml")
 	earth, msgChannel := world.NewWorld(cfg)
 
 	wg.Go(func(){

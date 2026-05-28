@@ -24,3 +24,8 @@ max_lifespan_ratio    = 0.50
 
 min_hold_time         = 5
 max_hold_time         = 20
+
+[simulation]
+death_prob        = 0.20
+replication_prob  = 0.02
+cpu_release_prob  = 0.95

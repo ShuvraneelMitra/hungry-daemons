@@ -37,6 +37,12 @@ type Config struct {
 		MinHoldTime int `toml:"min_hold_time"`
 		MaxHoldTime int `toml:"max_hold_time"`
 	} `toml:"genome"`
+
+	Simulation struct {
+		DeathProb       float64 `toml:"death_prob"`
+		ReplicationProb float64 `toml:"replication_prob"`
+		CPUReleaseProb  float64 `toml:"cpu_release_prob"`
+	} `toml:"simulation"`
 }
 
 func ParseConfig(configFile string) Config {

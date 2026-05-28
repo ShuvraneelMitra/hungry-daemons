@@ -17,6 +17,7 @@ func Run(msgChannel <-chan string, floatChannel <-chan float64,
 	newApp := app.New()
 	win := newApp.NewWindow("Hungry-Daemons")
 	win.SetMaster()
+	win.SetIcon(resourceIcon)
 
 	win.Resize(fyne.NewSize(WINDOW_WIDTH, WINDOW_HEIGHT))
 	screen := newApp.Driver().AllWindows()[0]

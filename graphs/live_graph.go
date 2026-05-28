@@ -10,6 +10,7 @@ import (
 )
 
 var LAVENDER = color.NRGBA{R: 167, G: 143, B: 255, A: 255}
+var RED = color.NRGBA{R:255, G:0, B:0, A:255}
 
 type LiveGraph struct {
 	widget.BaseWidget
@@ -79,8 +80,8 @@ func (r *liveGraphRenderer) Refresh() {
 	height := size.Height
 
 	leftPad := float32(55)
-	rightPad := float32(20)
-	topPad := float32(20)
+	rightPad := float32(30)
+	topPad := float32(35)
 	bottomPad := float32(35)
 
 	plotWidth := width - leftPad - rightPad
@@ -171,7 +172,7 @@ func (r *liveGraphRenderer) Refresh() {
 		yA := y0 - float32((values[i]-minY)/(maxY-minY))*plotHeight
 		yB := y0 - float32((values[i+1]-minY)/(maxY-minY))*plotHeight
 
-		line := canvas.NewLine(LAVENDER)
+		line := canvas.NewLine(RED)
 		line.StrokeWidth = 2
 		line.Position1 = fyne.NewPos(xA, yA)
 		line.Position2 = fyne.NewPos(xB, yB)

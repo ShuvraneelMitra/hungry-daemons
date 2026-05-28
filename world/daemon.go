@@ -8,10 +8,7 @@ import (
 )
 
 const (
-    CPU_RELEASE_PROB = 0.9
-	REPLICATION_PROB = 0.9
 	ID_LENGTH  = 10
-	DEATH_PROB = 0.4 // Probability that at the current ticker if age > lifeExpectancy the organism dies
 ) 
 
 type Instruction struct {
@@ -159,13 +156,13 @@ func (daemon *Daemon) Tick(ctx context.Context, tick int) {
 	}
 
 	if tick - lastHeldTokens >= daemon.Genome.MinimumHoldTime {
-		probablyExecute(REPLICATION_PROB, func() {
+		probablyExecute(daemon.Env.ReplicationProb(), func() {
 			for range daemon.Genome.ReplicationRate {
 				daemon.Replicate()
 			}
 		})
 
-		probablyExecute(CPU_RELEASE_PROB, func() {
+		probablyExecute(daemon.Env.CPUReleaseProb(), func() {
 			daemon.Env.SendSignal(RELEASE_CPU, daemon.Genome.ID)
 		})
 		return

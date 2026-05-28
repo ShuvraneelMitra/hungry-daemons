@@ -11,7 +11,7 @@ import (
 	. "github.com/ShuvraneelMitra/hungry-daemons/managers"
 )
 
-const BUFFER_SZ  = 100
+const BUFFER_SZ  = 1000
 
 type EventHandler func(world *World, data any)
 
@@ -55,6 +55,9 @@ type Environment interface {
 	SendSignal(signal EventType, data any)
 	TicksPerS() int 
 	GetPopulation() int
+	DeathProb() float64
+	ReplicationProb() float64
+	CPUReleaseProb() float64
 }
 
 type World struct {
@@ -65,6 +68,10 @@ type World struct {
 	currentTick    int
 	maxPop         int
 	maxCPU         int
+
+	deathProb       float64 // Probability that at the current ticker if age > lifeExpectancy the organism dies
+	replicationProb float64
+	cpuReleaseProb  float64
 
     organisms      map[string]*Daemon
 	mtx            *sync.RWMutex
@@ -121,28 +128,32 @@ func NewWorld(cfg Config) (*World, chan string) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	world := &World{
-		numOrganisms  : 0,
-		numFreeTokens : cfg.Env.MaxCPU,
-		lifeExpectancy: cfg.Env.LifeExp,
-		ticksPerS     : cfg.Env.TicksPerS,
-		currentTick   : 0,
-		maxPop        : cfg.Env.MaxPop,
-		maxCPU        : cfg.Env.MaxCPU,
+		numOrganisms    : 0,
+		numFreeTokens   : cfg.Env.MaxCPU,
+		lifeExpectancy  : cfg.Env.LifeExp,
+		ticksPerS       : cfg.Env.TicksPerS,
+		currentTick     : 0,
+		maxPop          : cfg.Env.MaxPop,
+		maxCPU          : cfg.Env.MaxCPU,
 
-		mtx           : &sync.RWMutex{},
-		wg            : &sync.WaitGroup{},
+		deathProb       : cfg.Simulation.DeathProb,
+        replicationProb : cfg.Simulation.ReplicationProb,
+        cpuReleaseProb  : cfg.Simulation.CPUReleaseProb,
 
-		eventMgr      : NewEventManager(),
-		organisms     : make(map[string]*Daemon),
-		ticker        : time.NewTicker(time.Second / time.Duration(cfg.Env.TicksPerS)),
-		reqChannel    : make(chan Event, cfg.Env.MaxPop + 1),
-		ctx           : ctx,
-		cancelFunc    : cancel,
-		shutdownOnce  : sync.Once{},
-		done          : make(chan struct{}),
+		mtx             : &sync.RWMutex{},
+		wg              : &sync.WaitGroup{},
 
-		stats         : CreateStats(),
-		ChannelToUI    : make(chan string, BUFFER_SZ),
+		eventMgr        : NewEventManager(),
+		organisms       : make(map[string]*Daemon),
+		ticker          : time.NewTicker(time.Second / time.Duration(cfg.Env.TicksPerS)),
+		reqChannel      : make(chan Event, cfg.Env.MaxPop + 1),
+		ctx             : ctx,
+		cancelFunc      : cancel,
+		shutdownOnce    : sync.Once{},
+		done            : make(chan struct{}),
+
+		stats           : CreateStats(),
+		ChannelToUI     : make(chan string, BUFFER_SZ),
 	}
 
 	// SUBSCRIBE TO EVENTS
@@ -341,10 +352,18 @@ func (world *World) broadcastTick(tick int) {
 	}
 }
 
+func (world *World) CPUReleaseProb() float64 {
+	return world.cpuReleaseProb
+}
+
 func (world *World) CurrentTick() int {
 	world.mtx.RLock()
 	defer world.mtx.RUnlock()
 	return world.currentTick
+}
+
+func (world *World) DeathProb() float64 {
+	return world.deathProb
 }
 
 func (world *World) Done() <-chan struct{} {
@@ -513,6 +532,10 @@ func (world *World) ReleaseCpu(daemonId string) {
 	daemon.ClearTokens(world.currentTick)
 }
 
+func (world *World) ReplicationProb() float64 {
+	return world.replicationProb
+}
+
 func (world *World) SendSignal(signal EventType, data any) {
 	world.eventMgr.Send(signal, data)
 }
@@ -581,7 +604,7 @@ func (world *World) Tick(ctx context.Context) {
 
 		for _, daemon := range organisms {
 			if daemon.age > daemon.minimumLifespan {
-				probablyExecute(DEATH_PROB, func(){
+				probablyExecute(world.deathProb, func(){
 					world.eventMgr.Send(KILL, []any{
 						daemon.id, DeathAge,
 					})

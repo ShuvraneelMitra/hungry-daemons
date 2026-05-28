@@ -2,7 +2,7 @@
 initial_population    = 300
 max_population        = 10000
 simulation_ticks      = 500
-max_cpu_tokens        = 20
+max_cpu_tokens        = 20000
 life_expectancy       = 200
 ticks_per_s           = 100
 
@@ -24,3 +24,8 @@ max_lifespan_ratio    = 1.00
 
 min_hold_time         = 20
 max_hold_time         = 100
+
+[simulation]
+death_prob        = 0.01
+replication_prob  = 0.12
+cpu_release_prob  = 0.85

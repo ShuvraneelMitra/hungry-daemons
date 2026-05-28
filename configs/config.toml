@@ -26,5 +26,10 @@ max_lifespan_ratio     = 0.90
 min_hold_time          = 3
 max_hold_time          = 6
 
+[simulation]
+death_prob             = 0.4
+replication_prob       = 0.9
+cpu_release_prob       = 0.9
+
 # EDITORS SORTIED ROISTED STORIED TRIODES
 # NITREOUS
