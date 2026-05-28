@@ -37,7 +37,7 @@ My vision for this project is much bigger than a simple CPU-token simulation, i.
 * distributed or massively parallel simulation modes
 * Right now once the organism acquires CPU tokens it is entirely up to that organism to release it. Future versions may change that.
 
-https://www.youtube.com/watch?v=6kiBYjvyojQ
+Relevant Youtube Video: https://www.youtube.com/watch?v=6kiBYjvyojQ
 ## Building and running the simulation
 
 This project specifically needs `Go >= 1.25`. You can get the latest stable version of Go here: [https://go.dev/doc/install](https://go.dev/doc/install)
