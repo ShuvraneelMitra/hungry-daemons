@@ -1,7 +1,7 @@
 # **Hungry ~Daemons~ Demons**
 
 <div align="center">
-  <img src="gui/icon.png" alt="Icon" width="350">
+  <img src="assets_/icon.png" alt="Icon" width="350">
 </div>
 
 <div align="center"><img src="https://img.shields.io/badge/Go-00ADD8?style=for-the-badge&logo=go&logoColor=white">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <img src="https://img.shields.io/badge/UNDER%20DEVELOPMENT-/?style=for-the-badge&color=red"></div>
@@ -51,5 +51,5 @@ This project specifically needs `Go >= 1.25`. You can get the latest stable vers
 Right now this project is not accepting contributions, but we should as soon as I can push out a stable release! Till then, here's a fun image (the background is my own IDE while developing this project):
 
 <div align="center">
-  <img src="gui/fighting_gophers.png" alt="Fun Image">
+  <img src="assets_/fighting_gophers.png" alt="Fun Image">
 </div>
