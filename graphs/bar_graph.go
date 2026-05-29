@@ -96,7 +96,7 @@ func (r *liveBarGraphRenderer) Refresh() {
 
 	leftPad := float32(12)
 	rightPad := float32(35)
-	topPad := float32(25)
+	topPad := float32(10)
 	bottomPad := float32(20)
 
 	plotWidth := width - leftPad - rightPad
@@ -130,10 +130,10 @@ func (r *liveBarGraphRenderer) Refresh() {
 		bar.Resize(fyne.NewSize(barWidth, barHeight))
 		bar.Move(fyne.NewPos(leftPad + 70, y))
 
-		value := canvas.NewText(fmt.Sprintf("%d", item.Count), color.Black)
+		value := canvas.NewText(fmt.Sprintf("%d", item.Count), color.White)
 		value.TextSize = 11
 		value.TextStyle = fyne.TextStyle{Monospace: true, Bold: true}
-		value.Move(fyne.NewPos(leftPad+barWidth+15, y+(barHeight/2)-6))
+		value.Move(fyne.NewPos(leftPad+barWidth+80, y+(barHeight/2)-6))
 
 		r.objects = append(r.objects, label, bar, value)
 	}

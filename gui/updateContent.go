@@ -5,9 +5,17 @@ import (
 	"strconv"
 	"time"
 	"fmt"
+	"strings"
+	"slices"
 
 	"fyne.io/fyne/v2"
 	"github.com/ShuvraneelMitra/hungry-daemons/managers"
+)
+
+const (
+	uiFPS          = 30
+	maxLogBytes    = 200_000
+	maxMetricBytes = 100_000
 )
 
 func updateTime(layout *guiLayout) {
@@ -45,18 +53,40 @@ func updateStatus(layout *guiLayout) {
 
 func updateLogs(layout *guiLayout, msgChannel <-chan any) {
 	go func() {
-		for message := range msgChannel {
-			msg := message
+		ticker := time.NewTicker(time.Second / uiFPS)
+		defer ticker.Stop()
 
-			fyne.Do(func() {
-				if layout.logsView.Text == "Daemon logs...\n\n" {
-					layout.logsView.SetText(msg.(string) + "\n")
-				} else {
-					layout.logsView.SetText(layout.logsView.Text + msg.(string) + "\n")
+		var buf strings.Builder
+		logText := "Daemon logs...\n\n"
+
+		for {
+			select {
+			case message, ok := <-msgChannel:
+				if !ok {
+					return
 				}
-				layout.logsView.CursorRow = len(layout.logsView.Text)
-				layout.logsView.Refresh()
-			})
+				if s, ok := message.(string); ok {
+					buf.WriteString(s)
+					buf.WriteByte('\n')
+				}
+
+			case <-ticker.C:
+				if buf.Len() == 0 {
+					continue
+				}
+
+				chunk := buf.String()
+				buf.Reset()
+
+				fyne.Do(func() {
+					logText += chunk
+					if len(logText) > maxLogBytes {
+						logText = logText[len(logText)-maxLogBytes:]
+					}
+					layout.logsView.SetText(logText)
+					layout.logsView.CursorRow = len(layout.logsView.Text)
+				})
+			}
 		}
 	}()
 }
@@ -85,12 +115,52 @@ func updateMetrics(layout *guiLayout, metrics <-chan any){
 
 func updateLineageGraph(layout *guiLayout, lineageChannel <-chan any) {
 	go func() {
-		for data := range lineageChannel {
-			d := data.([]managers.LineageCount)
+		ticker := time.NewTicker(time.Second / uiFPS)
+		defer ticker.Stop()
 
-			fyne.Do(func() {
-				layout.barPlot.SetData(d)
+		var latest []managers.LineageCount
+		var rendered []managers.LineageCount
+		var dirty bool
+
+		sameLineageData := func(a, b []managers.LineageCount) bool {
+			return slices.EqualFunc(a, b, func(x, y managers.LineageCount) bool {
+				return x.Surname == y.Surname && x.Count == y.Count
 			})
+		}
+
+		for {
+			select {
+			case data, ok := <-lineageChannel:
+				if !ok {
+					return
+				}
+
+				next, ok := data.([]managers.LineageCount)
+				if !ok {
+					continue
+				}
+
+				latest = slices.Clone(next)
+				dirty = true
+
+			case <-ticker.C:
+				if !dirty {
+					continue
+				}
+
+				if sameLineageData(latest, rendered) {
+					dirty = false
+					continue
+				}
+
+				snapshot := slices.Clone(latest)
+				rendered = slices.Clone(latest)
+				dirty = false
+
+				fyne.Do(func() {
+					layout.barPlot.SetData(snapshot)
+				})
+			}
 		}
 	}()
 }

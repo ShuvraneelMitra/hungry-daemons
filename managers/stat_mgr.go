@@ -133,3 +133,4 @@ func (stats *Stats) TrackDeath(surname string, reason DeathType, age int) {
 		}
 	}
 }
+

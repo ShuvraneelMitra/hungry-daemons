@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"image/color"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -36,7 +38,7 @@ type guiLayout struct {
 
 	tabs *container.AppTabs
 	logsView  *widget.Entry
-	metricsView *widget.Label
+	metricsView *widget.Entry
 
 	view *fyne.Container
 }
@@ -118,9 +120,21 @@ func getLayout() *guiLayout {
 		Monospace: true,
 	}
 	sidebarTitle.TextSize = theme.TextSize() * 0.9
+	leftPad := canvas.NewRectangle(color.Transparent)
+	leftPad.SetMinSize(fyne.NewSize(6, 0))
+	topPad := canvas.NewRectangle(color.Transparent)
+	topPad.SetMinSize(fyne.NewSize(0, 10))
+
+	paddedTitle := container.NewBorder(
+		topPad,
+		nil,
+		leftPad,
+		nil,
+		sidebarTitle,
+	)
 
 	sidebarContent := container.NewBorder(
-		sidebarTitle,
+		paddedTitle,
 		nil,
 		nil,
 		nil,
@@ -141,7 +155,7 @@ func getLayout() *guiLayout {
 		Monospace: true,
 	}
 
-	metricsView := widget.NewLabel("Metrics")
+	metricsView := widget.NewMultiLineEntry()
 	metricsView.TextStyle = fyne.TextStyle{
 		Monospace: true,
 	}

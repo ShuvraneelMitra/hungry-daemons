@@ -11,7 +11,10 @@ import (
 	. "github.com/ShuvraneelMitra/hungry-daemons/managers"
 )
 
-const BUFFER_SZ  = 1000
+const (
+	BUFFER_SZ  = 1000
+	ONE_IN_X_LOGS = 15
+)
 
 type EventHandler func(world *World, data any)
 
@@ -47,8 +50,6 @@ var (
 					},
 	}
 )
-
-
 
 type Environment interface {
 	CurrentTick() int
@@ -86,6 +87,7 @@ type World struct {
 
 	stats          *Stats
 	ChannelsToUI   map[string]chan any
+	Census         map[string]*LineageStats
 }
 
 //------------------------ THREAD-SAFETY -----------------------------
@@ -158,6 +160,7 @@ func NewWorld(cfg Config) (*World, map[string]chan any) {
 									"logs": make(chan any),
 									"topK": make(chan any),
 							},
+		Census			: make(map[string]*LineageStats),
 	}
 
 	world.ChannelsToUI["populationData"] = world.stats.PopulationDataChan
@@ -211,6 +214,8 @@ func (world *World) Initialize(cfg Config){
 				world.organisms[id] = NewDaemon(genome, world, world.currentTick)
 
 				world.stats.TrackBirth(world.organisms[id].Genome.Surname)	
+				world.Census[genome.Surname] = &LineageStats{}
+				world.Census[genome.Surname].TrackBirth(genome, 0)
 
 				if len(world.organisms) == world.numOrganisms {
 					break
@@ -417,10 +422,69 @@ func (world *World) Kill(daemonId string, reason DeathType) {
 	world.mtx.Unlock()
 
 	world.stats.TrackDeath(daemon.Genome.Surname, reason, daemon.Age())
+	if lineage := world.Census[daemon.Genome.Surname]; lineage != nil {
+		lineage.TrackDeath(daemon.Age())
+	}
 
 	close(daemon.Channel)
 	close(daemon.TickC)
 	daemon.ClearTokens(world.currentTick)
+}
+
+func (world *World) PrintLineageMetrics(topN int) {
+	lineages := world.stats.LineageTracker.TopK(topN, true)
+	if len(lineages) == 0 {
+		return
+	}
+
+	world.ChannelsToUI["metrics"]<-"	----------- LINEAGE METRICS ---------------"
+	for i := range topN {
+		l := lineages[i].Surname
+		info := world.Census[l]
+
+		world.ChannelsToUI["metrics"]<-fmt.Sprintf(
+		`
+	Lineage                 : %s
+
+	Population              : %d
+
+	Total Births            : %d
+	Total Deaths            : %d
+
+	Living Avg CPU Hunger   : %.3f
+	Living Avg Repl Rate    : %.3f
+	Living Avg Mutation     : %.3f
+
+	Historical Avg CPU      : %.3f
+	Historical Avg Repl     : %.3f
+	Historical Avg Mutation : %.3f
+
+	Average Death Age       : %.3f
+
+	Max Generation          : %d
+
+	--------------------------------------------------
+		`,
+		info.LineageID,
+
+		info.Population,
+
+		info.TotalBirths,
+		info.TotalDeaths,
+
+		info.LivingAvgCPUHunger,
+		info.LivingAvgReplicationRate,
+		info.LivingAvgMutationChance,
+
+		info.HistoricalAvgCPUHunger,
+		info.HistoricalAvgReplicationRate,
+		info.HistoricalAvgMutationChance,
+
+		info.AverageDeathAge,
+
+		info.MaxGeneration,
+		)
+	}
 }
 
 func (world *World) PrintMetrics() {
@@ -515,8 +579,11 @@ func (world *World) PrintMetrics() {
 				stats.AvgDeathAge,
 				stats.AvgFreeCPUTokens,
 			)
+			
+			world.ChannelsToUI["topK"]<-world.stats.LineageTracker.TopK(5, true)
 		}
 	world.ChannelsToUI["metrics"]<-statistics
+	world.ChannelsToUI["metrics"]<-"\n\n"
 
 	// Just a check to see whether the LineageTracker works correctly with respect to 
 	// the DominantLineageCount, then I will remove the latter. It does work correctly.
@@ -572,6 +639,7 @@ func (world *World) Shutdown(){
 		close(world.done)
 
 		world.PrintMetrics()
+		world.PrintLineageMetrics(5)
 	})
 }
 
@@ -597,6 +665,10 @@ func (world *World) Spawn(genome Genome, generation int, tick int) {
 	world.mtx.Unlock()
 
 	world.stats.TrackBirth(genome.Surname)
+	if _, exists := world.Census[genome.Surname]; !exists {
+		world.Census[genome.Surname] = &LineageStats{}
+	}
+	world.Census[genome.Surname].TrackBirth(daemon.Genome, daemon.Generation)
 	world.wg.Go(func() { daemon.Run(world.ctx) })
 }
 
@@ -606,10 +678,12 @@ func (world *World) Tick(ctx context.Context) {
 
 	domLineage := world.stats.LineageTracker.TopK(1, true)[0]
 
-	world.ChannelsToUI["logs"]<-fmt.Sprintf("Tick number %d", world.currentTick)
-	world.ChannelsToUI["logs"]<-fmt.Sprintf("Population %d", world.numOrganisms)
-	world.ChannelsToUI["logs"]<-fmt.Sprintf("Dominant Lineage %s, Count %d\n", 
+	if world.currentTick % ONE_IN_X_LOGS == 0 {
+		world.ChannelsToUI["logs"]<-fmt.Sprintf("Tick number %d", world.currentTick)
+		world.ChannelsToUI["logs"]<-fmt.Sprintf("Population %d", world.numOrganisms)
+		world.ChannelsToUI["logs"]<-fmt.Sprintf("Dominant Lineage %s, Count %d\n", 
 											domLineage.Surname, domLineage.Count)
+	}
 
 	currentTick := world.currentTick
 	world.mtx.Unlock()
@@ -634,20 +708,6 @@ func (world *World) Tick(ctx context.Context) {
 				})
 			}
 		}
-
-		// if population > world.maxPop {
-		// 	var oldestId string
-		// 	var oldestAge int = 0
-		// 	for _, daemon := range organisms {
-		// 		if daemon.age > oldestAge {
-		// 			oldestAge = daemon.age
-		// 			oldestId = daemon.id
-		// 		}
-		// 	}
-		// 	world.eventMgr.Send(KILL, []any{
-		// 		oldestId, DeathCulling,
-		// 	})
-		// } //This is actually a useless snippet since Spawn won't work if pop > maxpop
 	})
 
 	for {
@@ -683,9 +743,46 @@ func (world *World) TicksPerS() int {
 	return world.ticksPerS
 }
 
-func (world *World) UpdateMetrics() {
+func (world *World) UpdateCurPopAverages() {
 	world.mtx.RLock()
 	defer world.mtx.RUnlock()
+
+	for _, lineageStat := range world.Census {
+		lineageStat.Population = 0
+		lineageStat.totalLivingCPUHunger = 0
+		lineageStat.totalLivingReplicationRate = 0
+		lineageStat.totalLivingMutationChance = 0
+
+		lineageStat.LivingAvgCPUHunger = 0
+		lineageStat.LivingAvgReplicationRate = 0
+		lineageStat.LivingAvgMutationChance = 0
+	}
+
+	for _, daemon := range world.organisms {
+		lineageID := daemon.Genome.Surname
+		lineage := world.Census[lineageID]
+
+		lineage.Population++
+
+		lineage.totalLivingCPUHunger += daemon.Genome.CPUHunger
+		lineage.totalLivingReplicationRate += daemon.Genome.ReplicationRate
+		lineage.totalLivingMutationChance += daemon.Genome.MutationChance
+	}
+
+	for _, lineage := range world.Census {
+		if lineage.Population == 0 {
+			continue
+		}
+
+		lineage.LivingAvgCPUHunger = float64(lineage.totalLivingCPUHunger) / float64(lineage.Population)
+		lineage.LivingAvgReplicationRate = float64(lineage.totalLivingReplicationRate) / float64(lineage.Population)
+		lineage.LivingAvgMutationChance = lineage.totalLivingMutationChance / float64(lineage.Population)
+	}
+}
+
+
+func (world *World) UpdateMetrics() {
+	world.mtx.RLock()
 
 	population := len(world.organisms)
 
@@ -695,6 +792,7 @@ func (world *World) UpdateMetrics() {
 	if population == 0 {
 		world.stats.SetGenomeAverages(0, 0, 0, 0, 0)
 		world.stats.SetCPUHungerRange(0, 0)
+		world.mtx.RUnlock()
 		return
 	}
 
@@ -734,6 +832,9 @@ func (world *World) UpdateMetrics() {
 	)
 
 	world.stats.SetCPUHungerRange(minCPUHunger, maxCPUHunger)
+	world.mtx.RUnlock()
+
+	world.UpdateCurPopAverages()
 
 	world.ChannelsToUI["populationData"]<-float64(population)
 	world.ChannelsToUI["topK"]<-world.stats.LineageTracker.TopK(5, true)
