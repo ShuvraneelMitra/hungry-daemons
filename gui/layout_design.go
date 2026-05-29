@@ -25,13 +25,14 @@ type StatusBar struct {
 }
 
 type guiLayout struct {
-	sidebar *widget.Label
+	sidebar fyne.CanvasObject
 	chartArea *widget.Label
 	statusBar *StatusBar
 	header *Header
 	footer fyne.CanvasObject
 
 	graph *graphs.LiveGraph
+	barPlot *graphs.LiveBarGraph
 
 	tabs *container.AppTabs
 	logsView  *widget.Entry
@@ -109,8 +110,25 @@ func getLayout() *guiLayout {
 
 	themedFooter := getThemedHeaderandFooter(footer)
 
-    sidebar := widget.NewLabel("Default")
-	themedSidebar := getThemedSidebar(sidebar)
+    lineageGraph := graphs.NewLiveBarGraph(5)
+
+	sidebarTitle := canvas.NewText("Top Lineages", GOPHER)
+	sidebarTitle.TextStyle = fyne.TextStyle{
+		Bold:      true,
+		Monospace: true,
+	}
+	sidebarTitle.TextSize = theme.TextSize() * 0.9
+
+	sidebarContent := container.NewBorder(
+		sidebarTitle,
+		nil,
+		nil,
+		nil,
+		container.NewMax(lineageGraph),
+	)
+
+	themedSidebar := getThemedSidebar(sidebarContent)
+
     top := widget.NewLabel("MainWindow")
 	bottom := getStatusBar()
 
@@ -124,6 +142,9 @@ func getLayout() *guiLayout {
 	}
 
 	metricsView := widget.NewLabel("Metrics")
+	metricsView.TextStyle = fyne.TextStyle{
+		Monospace: true,
+	}
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Dashboard", dashboardView),
@@ -155,13 +176,14 @@ func getLayout() *guiLayout {
     )
 
 	return &guiLayout {
-		sidebar: sidebar,
+		sidebar: themedSidebar,
 		chartArea: top,
 		statusBar: bottom,
 		view: compiledContainer,
 		header: header,
 		footer: themedFooter,
 		graph: graph,
+		barPlot: lineageGraph,
 		tabs: tabs,
 		logsView: logsView,
 		metricsView: metricsView,

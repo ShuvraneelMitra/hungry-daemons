@@ -11,7 +11,10 @@ import (
 const (
 	HEADING_TO_BODY = 1.2
 )
-var LAVENDER = color.NRGBA{R: 167, G: 143, B: 255, A: 255}
+var (
+	LAVENDER = color.NRGBA{R: 167, G: 143, B: 255, A: 255}
+	GOPHER = color.NRGBA{R : 37, G : 245, B : 252, A : 255}
+)
 
 //------------------------------------------ SIDEBAR THEME -------------------------------------------------
 type SidebarTheme struct {

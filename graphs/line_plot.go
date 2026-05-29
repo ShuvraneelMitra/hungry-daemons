@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
+	"fyne.io/fyne/v2/driver/desktop"
 )
 
 var LAVENDER = color.NRGBA{R: 167, G: 143, B: 255, A: 255}
@@ -17,12 +18,16 @@ type LiveGraph struct {
 
 	values    []float64
 	maxPoints int
+
+	hoverIndex int
+	hoverPos   fyne.Position
 }
 
 func NewLiveGraph(maxPoints int) *LiveGraph {
 	g := &LiveGraph{
 		values:    make([]float64, 0, maxPoints),
 		maxPoints: maxPoints,
+		hoverIndex: -1,
 	}
 
 	g.ExtendBaseWidget(g)
@@ -179,4 +184,102 @@ func (r *liveGraphRenderer) Refresh() {
 
 		r.objects = append(r.objects, line)
 	}
+
+	if r.graph.hoverIndex >= 0 && r.graph.hoverIndex < len(values) {
+		idx := r.graph.hoverIndex
+		val := values[idx]
+
+		text := fmt.Sprintf("(%d, %.2f)", idx, val)
+
+		tooltipBg := canvas.NewRectangle(color.NRGBA{R: 20, G: 20, B: 20, A: 230})
+		tooltipBg.Resize(fyne.NewSize(95, 24))
+		tooltipBg.Move(fyne.NewPos(
+			r.graph.hoverPos.X+10,
+			r.graph.hoverPos.Y-30,
+		))
+
+		tooltipText := canvas.NewText(text, color.White)
+		tooltipText.TextSize = 10
+		tooltipText.TextStyle = fyne.TextStyle{Monospace: true}
+		tooltipText.Move(fyne.NewPos(
+			r.graph.hoverPos.X+16,
+			r.graph.hoverPos.Y-27,
+		))
+
+		r.objects = append(r.objects, tooltipBg, tooltipText)
+	}
+}
+
+func (g *LiveGraph) MouseIn(*desktop.MouseEvent) {}
+
+func (g *LiveGraph) MouseOut() {
+	g.hoverIndex = -1
+	g.Refresh()
+}
+
+func (g *LiveGraph) MouseMoved(e *desktop.MouseEvent) {
+	if len(g.values) < 2 {
+		return
+	}
+
+	size := g.Size()
+
+	leftPad := float32(55)
+	rightPad := float32(20)
+	topPad := float32(20)
+	bottomPad := float32(35)
+
+	plotWidth := size.Width - leftPad - rightPad
+	plotHeight := size.Height - topPad - bottomPad
+
+	if plotWidth <= 0 || plotHeight <= 0 {
+		return
+	}
+
+	minY := g.values[0]
+	maxY := g.values[0]
+
+	for _, v := range g.values {
+		if v < minY {
+			minY = v
+		}
+		if v > maxY {
+			maxY = v
+		}
+	}
+
+	if maxY == minY {
+		maxY = minY + 1
+	}
+
+	stepX := plotWidth / float32(len(g.values)-1)
+
+	nearest := -1
+	minDistSq := float32(999999)
+
+	for i, v := range g.values {
+		x := leftPad + float32(i)*stepX
+		y := topPad + plotHeight -
+			float32((v-minY)/(maxY-minY))*plotHeight
+
+		dx := e.Position.X - x
+		dy := e.Position.Y - y
+		distSq := dx*dx + dy*dy
+
+		if distSq < minDistSq {
+			minDistSq = distSq
+			nearest = i
+		}
+	}
+
+	const hoverRadius = float32(8)
+
+	if nearest >= 0 && minDistSq <= hoverRadius*hoverRadius {
+		g.hoverIndex = nearest
+		g.hoverPos = e.Position
+	} else {
+		g.hoverIndex = -1
+	}
+
+	g.Refresh()
 }

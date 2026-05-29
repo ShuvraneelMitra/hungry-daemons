@@ -4,7 +4,6 @@ import (
 	"sync"
 )
 
-
 type DeathType int
 // Death Reasons
 const (
@@ -38,15 +37,14 @@ type Stats struct {
 	MinCPUHunger           int
 	MaxCPUHunger           int
 
-	DominantLineageID      string
-	DominantLineageCount   int
-
 	AvgFreeCPUTokens       float64
 
 	totalFreeTokensObserved int
 	tokenObservationCount   int
 
-	FloatChannel           chan float64
+	PopulationDataChan      chan any
+
+	LineageTracker          *SortedMap
 }
 
 // thankfully no Mutexes in this file since the statistics object will only 
@@ -56,7 +54,11 @@ func CreateStats() *Stats {
 	onceStat.Do(func(){
 		stats = &Stats{
 			DeathsByType: make(map[DeathType]int),
-			FloatChannel: make(chan float64),
+			PopulationDataChan: make(chan any),
+			LineageTracker: &SortedMap{
+				data : make(map[string]int),
+				lineages: make([]LineageCount, 0),
+			},
 		}
 	})
 	return stats
@@ -80,11 +82,6 @@ func (stats *Stats) SetCPUHungerRange(minCPUHunger, maxCPUHunger int) {
 	stats.MaxCPUHunger = maxCPUHunger
 }
 
-func (stats *Stats) SetDominantLineage(lineageID string, count int) {
-	stats.DominantLineageID = lineageID
-	stats.DominantLineageCount = count
-}
-
 func (stats *Stats) SetGenomeAverages(
 	avgCPUHunger float64,
 	avgReplicationRate float64,
@@ -101,9 +98,15 @@ func (stats *Stats) SetGenomeAverages(
 
 func (stats *Stats) TrackBirth(surname string) {
 	stats.TotalBirths++
+	pop, ok := stats.LineageTracker.Get(surname)
+	if !ok {
+		stats.LineageTracker.Set(surname, 1)
+	} else{
+		stats.LineageTracker.Set(surname, pop + 1)
+	}
 }
 
-func (stats *Stats) TrackDeath(reason DeathType, age int) {
+func (stats *Stats) TrackDeath(surname string, reason DeathType, age int) {
     if age == 0 {
         stats.DeathsByType[reason]++
 	    stats.TotalDeaths++
@@ -118,4 +121,15 @@ func (stats *Stats) TrackDeath(reason DeathType, age int) {
 	stats.AvgDeathAge =
 		float64(stats.totalDeathAge) /
 		float64(stats.TotalDeaths)
+
+	pop, ok := stats.LineageTracker.Get(surname)
+	if !ok {
+		return
+	} else{
+		if pop == 1 {
+			stats.LineageTracker.Delete(surname)
+		} else {
+			stats.LineageTracker.Set(surname, pop - 1) 
+		}
+	}
 }

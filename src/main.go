@@ -14,7 +14,7 @@ func main() {
 	wg := sync.WaitGroup{}
 
 	cfg := world.ParseConfig("../configs/stress_test.toml")
-	earth, msgChannel := world.NewWorld(cfg)
+	earth, channels := world.NewWorld(cfg)
 
 	wg.Go(func(){
 		earth.Initialize(cfg)
@@ -23,6 +23,6 @@ func main() {
 		<-earth.Done()
 	})
 
-	gui.Run(msgChannel, earth.GetPopChan(), cancel)
+	gui.Run(channels, cancel)
 	wg.Wait()
 }

@@ -4,8 +4,10 @@ import (
 	"runtime"
 	"strconv"
 	"time"
+	"fmt"
 
 	"fyne.io/fyne/v2"
+	"github.com/ShuvraneelMitra/hungry-daemons/managers"
 )
 
 func updateTime(layout *guiLayout) {
@@ -41,16 +43,16 @@ func updateStatus(layout *guiLayout) {
 	}()
 }
 
-func updateLogs(layout *guiLayout, msgChannel <-chan string) {
+func updateLogs(layout *guiLayout, msgChannel <-chan any) {
 	go func() {
 		for message := range msgChannel {
 			msg := message
 
 			fyne.Do(func() {
 				if layout.logsView.Text == "Daemon logs...\n\n" {
-					layout.logsView.SetText(msg + "\n")
+					layout.logsView.SetText(msg.(string) + "\n")
 				} else {
-					layout.logsView.SetText(layout.logsView.Text + msg + "\n")
+					layout.logsView.SetText(layout.logsView.Text + msg.(string) + "\n")
 				}
 				layout.logsView.CursorRow = len(layout.logsView.Text)
 				layout.logsView.Refresh()
@@ -59,13 +61,35 @@ func updateLogs(layout *guiLayout, msgChannel <-chan string) {
 	}()
 }
 
-func updateGraph(layout *guiLayout, points <-chan float64) {
+func updateGraph(layout *guiLayout, points <-chan any) {
 	go func() {
 		for p := range points {
 			value := p
 
 			fyne.Do(func() {
-				layout.graph.AddPoint(value)
+				layout.graph.AddPoint(value.(float64))
+			})
+		}
+	}()
+}
+
+func updateMetrics(layout *guiLayout, metrics <-chan any){
+	go func(){
+		for metric := range metrics {
+			fyne.Do(func(){
+				layout.metricsView.SetText(layout.metricsView.Text + fmt.Sprint(metric))
+			})
+		}
+	}()
+}
+
+func updateLineageGraph(layout *guiLayout, lineageChannel <-chan any) {
+	go func() {
+		for data := range lineageChannel {
+			d := data.([]managers.LineageCount)
+
+			fyne.Do(func() {
+				layout.barPlot.SetData(d)
 			})
 		}
 	}()

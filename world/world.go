@@ -68,7 +68,7 @@ type World struct {
 	currentTick    int
 	maxPop         int
 	maxCPU         int
-
+	
 	deathProb       float64 // Probability that at the current ticker if age > lifeExpectancy the organism dies
 	replicationProb float64
 	cpuReleaseProb  float64
@@ -85,7 +85,7 @@ type World struct {
 	done           chan struct{}
 
 	stats          *Stats
-	ChannelToUI     chan string
+	ChannelsToUI   map[string]chan any
 }
 
 //------------------------ THREAD-SAFETY -----------------------------
@@ -124,7 +124,7 @@ func (world *World) snapshotOrganisms() []organismSnapshot {
 
 //----------------- MOST IMPORTANT FUNCTIONS -------------------------
 
-func NewWorld(cfg Config) (*World, chan string) {
+func NewWorld(cfg Config) (*World, map[string]chan any) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	world := &World{
@@ -153,15 +153,21 @@ func NewWorld(cfg Config) (*World, chan string) {
 		done            : make(chan struct{}),
 
 		stats           : CreateStats(),
-		ChannelToUI     : make(chan string, BUFFER_SZ),
+		ChannelsToUI    : map[string]chan any{
+									"metrics": make(chan any),
+									"logs": make(chan any),
+									"topK": make(chan any),
+							},
 	}
+
+	world.ChannelsToUI["populationData"] = world.stats.PopulationDataChan
 
 	// SUBSCRIBE TO EVENTS
 	world.eventMgr.Subscribe(KILL, world.reqChannel)
 	world.eventMgr.Subscribe(RELEASE_CPU, world.reqChannel)
 	world.eventMgr.Subscribe(SPAWN, world.reqChannel)
 	world.eventMgr.Subscribe(REQUEST_CPU, world.reqChannel)
-	return world, world.ChannelToUI
+	return world, world.ChannelsToUI
 }
 
 func (world *World) Initialize(cfg Config){
@@ -377,8 +383,8 @@ func (world *World) GetOrganism(id string) (*Daemon, bool) {
 	return daemon, ok
 }
 
-func (world *World) GetPopChan() chan float64 {
-	return world.stats.FloatChannel
+func (world *World) GetPopChan() chan any {
+	return world.stats.PopulationDataChan
 }
 
 func (world *World) GetPopulation() int {
@@ -410,7 +416,7 @@ func (world *World) Kill(daemonId string, reason DeathType) {
 	delete(world.organisms, daemonId)
 	world.mtx.Unlock()
 
-	world.stats.TrackDeath(reason, daemon.Age())
+	world.stats.TrackDeath(daemon.Genome.Surname, reason, daemon.Age())
 
 	close(daemon.Channel)
 	close(daemon.TickC)
@@ -472,8 +478,8 @@ func (world *World) PrintMetrics() {
 			stats.MinCPUHunger,
 			stats.MaxCPUHunger,
 
-			stats.DominantLineageID,
-			stats.DominantLineageCount,
+			stats.LineageTracker.TopK(1, true)[0].Surname,
+			stats.LineageTracker.TopK(1, true)[0].Count,
 
 			stats.AvgFreeCPUTokens,
 		)
@@ -510,7 +516,16 @@ func (world *World) PrintMetrics() {
 				stats.AvgFreeCPUTokens,
 			)
 		}
-	world.ChannelToUI<-statistics
+	world.ChannelsToUI["metrics"]<-statistics
+
+	// Just a check to see whether the LineageTracker works correctly with respect to 
+	// the DominantLineageCount, then I will remove the latter. It does work correctly.
+	// if world.numOrganisms > 0 {
+	// 	world.ChannelsToUI["metrics"]<-world.stats.LineageTracker.TopK(1, true)[0].Surname
+	// 	world.ChannelsToUI["metrics"]<-world.stats.LineageTracker.TopK(1, true)[0].Count
+	// 	world.ChannelsToUI["metrics"]<-world.stats.DominantLineageCount
+	// 	world.ChannelsToUI["metrics"]<-world.stats.DominantLineageID
+	// }
 }
 
 func (world *World) ReleaseCpu(daemonId string) {
@@ -589,8 +604,12 @@ func (world *World) Tick(ctx context.Context) {
 	world.mtx.Lock()
 	world.currentTick++
 
-	world.ChannelToUI<-fmt.Sprintf("Tick number %d", world.currentTick)
-	world.ChannelToUI<-fmt.Sprintf("Population %d\n", world.numOrganisms)
+	domLineage := world.stats.LineageTracker.TopK(1, true)[0]
+
+	world.ChannelsToUI["logs"]<-fmt.Sprintf("Tick number %d", world.currentTick)
+	world.ChannelsToUI["logs"]<-fmt.Sprintf("Population %d", world.numOrganisms)
+	world.ChannelsToUI["logs"]<-fmt.Sprintf("Dominant Lineage %s, Count %d\n", 
+											domLineage.Surname, domLineage.Count)
 
 	currentTick := world.currentTick
 	world.mtx.Unlock()
@@ -646,7 +665,7 @@ func (world *World) Tick(ctx context.Context) {
 	done:
 		world.mtx.RLock()
 		if world.numOrganisms == 0 {
-			world.ChannelToUI<-"Population died out! World ends here\n"
+			world.ChannelsToUI["logs"]<-"Population died out! World ends here\n"
 			world.mtx.RUnlock()
 			world.Shutdown()
 		} else {
@@ -676,7 +695,6 @@ func (world *World) UpdateMetrics() {
 	if population == 0 {
 		world.stats.SetGenomeAverages(0, 0, 0, 0, 0)
 		world.stats.SetCPUHungerRange(0, 0)
-		world.stats.SetDominantLineage("", 0)
 		return
 	}
 
@@ -688,8 +706,6 @@ func (world *World) UpdateMetrics() {
 
 	minCPUHunger := math.MaxInt
 	maxCPUHunger := math.MinInt
-
-	lineageCounts := make(map[string]int)
 
 	for _, daemon := range world.organisms {
 		genome := daemon.Genome
@@ -706,19 +722,7 @@ func (world *World) UpdateMetrics() {
 		if genome.CPUHunger > maxCPUHunger {
 			maxCPUHunger = genome.CPUHunger
 		}
-
-		lineageCounts[genome.Surname]++
 		totalAge += daemon.Age()
-	}
-
-	dominantLineage := ""
-	dominantCount := 0
-
-	for lineage, count := range lineageCounts {
-		if count > dominantCount {
-			dominantLineage = lineage
-			dominantCount = count
-		}
 	}
 
 	world.stats.SetGenomeAverages(
@@ -730,9 +734,9 @@ func (world *World) UpdateMetrics() {
 	)
 
 	world.stats.SetCPUHungerRange(minCPUHunger, maxCPUHunger)
-	world.stats.SetDominantLineage(dominantLineage, dominantCount)
 
-	world.stats.FloatChannel<-float64(population)
+	world.ChannelsToUI["populationData"]<-float64(population)
+	world.ChannelsToUI["topK"]<-world.stats.LineageTracker.TopK(5, true)
 }
 
 

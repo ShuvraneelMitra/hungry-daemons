@@ -12,8 +12,16 @@ const (
 	WINDOW_HEIGHT = 615
 )
 
-func Run(msgChannel <-chan string, floatChannel <-chan float64,
-		cancel context.CancelFunc) {
+func updateContent(channels map[string]chan any, layout *guiLayout) {
+	updateTime(layout)
+	updateStatus(layout)
+	updateLogs(layout, channels["logs"])
+	updateGraph(layout, channels["populationData"])
+	updateMetrics(layout, channels["metrics"])
+	updateLineageGraph(layout, channels["topK"])
+}
+
+func Run(channels map[string]chan any, cancel context.CancelFunc) {
 	newApp := app.New()
 	win := newApp.NewWindow("Hungry-Daemons")
 	win.SetMaster()
@@ -26,10 +34,7 @@ func Run(msgChannel <-chan string, floatChannel <-chan float64,
 	layout := getLayout()
 
 	win.SetContent(layout.view)
-	updateTime(layout)
-	updateStatus(layout)
-	updateLogs(layout, msgChannel)
-	updateGraph(layout, floatChannel)
+	updateContent(channels, layout)
 
 	win.SetOnClosed(func() {
 		cancel()
