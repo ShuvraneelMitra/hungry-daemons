@@ -9,7 +9,6 @@ type DeathType int
 const (
     DeathAge DeathType = iota
     DeathStarvation
-    DeathCulling
 )
 
 var (
