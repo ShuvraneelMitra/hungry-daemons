@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/theme"
 )
 
 const (
@@ -21,7 +22,7 @@ func updateContent(channels map[string]chan any, layout *guiLayout) {
 	updateLineageGraph(layout, channels["topK"])
 }
 
-func Run(channels map[string]chan any, cancel context.CancelFunc) {
+func Run(from map[string]chan any, to map[string]chan any, cancel context.CancelFunc) {
 	newApp := app.New()
 	win := newApp.NewWindow("Hungry-Daemons")
 	win.SetMaster()
@@ -32,9 +33,30 @@ func Run(channels map[string]chan any, cancel context.CancelFunc) {
 	screen.CenterOnScreen()
 
 	layout := getLayout()
+	layout.statusBar.SetShutDownButtonFunc(func() {
+		to["shutdown"]<-struct{}{}
+
+		for _, channel := range to {
+			close(channel)
+		}
+	})
+
+	layout.statusBar.SetPauseButtonFunc(func() {
+		paused = !paused
+
+		if paused {
+			to["pause"]<-struct{}{}
+			controlButton.SetText("Resume")
+			controlButton.SetIcon(theme.MediaPlayIcon())
+		} else {
+			to["pause"]<-struct{}{}
+			controlButton.SetText("Pause")
+			controlButton.SetIcon(theme.MediaPauseIcon())
+		}
+	})
 
 	win.SetContent(layout.view)
-	updateContent(channels, layout)
+	updateContent(from, layout)
 
 	win.SetOnClosed(func() {
 		cancel()

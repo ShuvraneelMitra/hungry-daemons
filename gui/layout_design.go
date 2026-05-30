@@ -12,6 +12,10 @@ import (
 	"github.com/ShuvraneelMitra/hungry-daemons/graphs"
 )
 
+var paused = false
+var controlButton *widget.Button
+var shutdownButton *widget.Button
+
 type Header struct {
 	left  *canvas.Text
 	right *canvas.Text
@@ -23,7 +27,18 @@ type StatusBar struct {
 	title *canvas.Text
 	body *widget.RichText
 
+	controlButton *widget.Button
+	shutdownButton *widget.Button
+
 	view *fyne.Container
+}
+
+func (s *StatusBar) SetPauseButtonFunc(f func()) {
+	s.controlButton.OnTapped = f
+}
+
+func (s *StatusBar) SetShutDownButtonFunc(f func()) {
+	s.shutdownButton.OnTapped = f
 }
 
 type guiLayout struct {
@@ -88,17 +103,26 @@ func getStatusBar() *StatusBar {
 		Text: "Default Body",
 	})
 
+	controlButton = widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), func(){})
+	shutdownButton = widget.NewButton("Shut Down", func(){})
+	buttons := container.NewVBox(
+		controlButton,
+		shutdownButton,
+	)
+
 	content := container.NewBorder(
 		title, 
 		nil,   
 		nil,   
-		nil,   
+		buttons,   
 		bodyText, 
 	)
 
 	return &StatusBar{
 		title: title,
 		body:  bodyText, 
+		controlButton: controlButton,
+		shutdownButton: shutdownButton,
 		view:  content,
 	}
 }

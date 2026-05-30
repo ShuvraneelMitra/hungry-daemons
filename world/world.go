@@ -87,6 +87,7 @@ type World struct {
 
 	stats          *Stats
 	ChannelsToUI   map[string]chan any
+	ChannelsFromUI map[string]chan any
 	Census         map[string]*LineageStats
 }
 
@@ -126,7 +127,7 @@ func (world *World) snapshotOrganisms() []organismSnapshot {
 
 //----------------- MOST IMPORTANT FUNCTIONS -------------------------
 
-func NewWorld(cfg Config) (*World, map[string]chan any) {
+func NewWorld(cfg Config) (*World, map[string]chan any, map[string]chan any) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	world := &World{
@@ -160,6 +161,10 @@ func NewWorld(cfg Config) (*World, map[string]chan any) {
 									"logs": make(chan any, BUFFER_SZ),
 									"topK": make(chan any, BUFFER_SZ),
 							},
+		ChannelsFromUI  : map[string]chan any{
+									"pause": make(chan any),
+									"shutdown": make(chan any),
+							},
 		Census			: make(map[string]*LineageStats),
 	}
 
@@ -170,7 +175,7 @@ func NewWorld(cfg Config) (*World, map[string]chan any) {
 	world.eventMgr.Subscribe(RELEASE_CPU, world.reqChannel)
 	world.eventMgr.Subscribe(SPAWN, world.reqChannel)
 	world.eventMgr.Subscribe(REQUEST_CPU, world.reqChannel)
-	return world, world.ChannelsToUI
+	return world, world.ChannelsToUI, world.ChannelsFromUI
 }
 
 func (world *World) Initialize(cfg Config){
@@ -240,6 +245,13 @@ func (world *World) Run(extCtx context.Context, simTicks int) {
 				case <-extCtx.Done():
 					world.Shutdown()
 					return
+				
+				case <-world.ChannelsFromUI["pause"]:
+					<-world.ChannelsFromUI["pause"]
+				
+				case <-world.ChannelsFromUI["shutdown"]:
+					world.Shutdown()
+					return
 
 				case <-world.ticker.C:
 					tickCtx, cancel := context.WithTimeout(world.ctx, time.Second/time.Duration(world.ticksPerS))
@@ -253,74 +265,6 @@ func (world *World) Run(extCtx context.Context, simTicks int) {
 			}
 		}
 	}()
-}
-
-func (world *World) ValidateInvariants() error {
-	world.mtx.RLock()
-	defer world.mtx.RUnlock()
-
-	if world.numOrganisms != len(world.organisms) {
-		return fmt.Errorf(
-			"invariant failed: numOrganisms=%d but len(organisms)=%d",
-			world.numOrganisms,
-			len(world.organisms),
-		)
-	}
-
-	if world.numOrganisms < 0 {
-		return fmt.Errorf("invariant failed: numOrganisms is negative: %d", world.numOrganisms)
-	}
-
-	if world.numFreeTokens < 0 {
-		return fmt.Errorf("invariant failed: numFreeTokens is negative: %d", world.numFreeTokens)
-	}
-
-	if world.numFreeTokens > world.maxCPU {
-		return fmt.Errorf(
-			"invariant failed: numFreeTokens=%d exceeds max CPU tokens=%d",
-			world.numFreeTokens,
-			world.maxCPU,
-		)
-	}
-
-	totalHeldTokens := 0
-
-	for id, daemon := range world.organisms {
-		if daemon == nil {
-			return fmt.Errorf("invariant failed: daemon %s is nil", id)
-		}
-
-		currentTokens, _ := daemon.State()
-
-		if currentTokens < 0 {
-			return fmt.Errorf(
-				"invariant failed: daemon %s has negative tokens: %d",
-				id,
-				currentTokens,
-			)
-		}
-
-		if currentTokens > world.maxCPU {
-			return fmt.Errorf(
-				"invariant failed: daemon %s has tokens=%d exceeding max CPU=%d",
-				id,
-				currentTokens,
-				world.maxCPU,
-			)
-		}
-
-		totalHeldTokens += currentTokens
-	}
-
-	if world.numFreeTokens + totalHeldTokens > world.maxCPU {
-		return fmt.Errorf(
-			"invariant failed: free tokens + held tokens = %d, exceeds max CPU tokens=%d",
-			world.numFreeTokens+totalHeldTokens,
-			world.maxCPU,
-		)
-	}
-
-	return nil
 }
 
 // -------------------- ALL THE HELPER/FACTORY FUNCTIONS ------------------
@@ -618,7 +562,15 @@ func (world *World) Shutdown(){
 	world.shutdownOnce.Do(func(){
 		defer world.ticker.Stop()
 
+		for _, daemon := range world.organisms {
+			close(daemon.TickC)
+		}
+
 		world.cancelFunc()
+
+		for _, channel := range world.ChannelsToUI {
+			close(channel)
+		}
 
 		world.eventMgr.Unsubscribe(KILL, world.reqChannel)
 		world.eventMgr.Unsubscribe(RELEASE_CPU, world.reqChannel)
