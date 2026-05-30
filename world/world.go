@@ -13,7 +13,7 @@ import (
 
 const (
 	BUFFER_SZ  = 1000
-	ONE_IN_X_LOGS = 15
+	LOG_ONCE_IN_X_TICKS = 15
 )
 
 type EventHandler func(world *World, data any)
@@ -156,9 +156,9 @@ func NewWorld(cfg Config) (*World, map[string]chan any) {
 
 		stats           : CreateStats(),
 		ChannelsToUI    : map[string]chan any{
-									"metrics": make(chan any),
-									"logs": make(chan any),
-									"topK": make(chan any),
+									"metrics": make(chan any, BUFFER_SZ),
+									"logs": make(chan any, BUFFER_SZ),
+									"topK": make(chan any, BUFFER_SZ),
 							},
 		Census			: make(map[string]*LineageStats),
 	}
@@ -438,7 +438,7 @@ func (world *World) PrintLineageMetrics(topN int) {
 	}
 
 	world.ChannelsToUI["metrics"]<-"	----------- LINEAGE METRICS ---------------"
-	for i := range topN {
+	for i := 0; i < min(topN, len(lineages)); i++  {
 		l := lineages[i].Surname
 		info := world.Census[l]
 
@@ -489,6 +489,7 @@ func (world *World) PrintLineageMetrics(topN int) {
 
 func (world *World) PrintMetrics() {
 	stats := world.stats
+	dominant := stats.LineageTracker.TopK(1, true)[0]
 
 	var statistics string
 	if world.numOrganisms > 0 {
@@ -542,8 +543,8 @@ func (world *World) PrintMetrics() {
 			stats.MinCPUHunger,
 			stats.MaxCPUHunger,
 
-			stats.LineageTracker.TopK(1, true)[0].Surname,
-			stats.LineageTracker.TopK(1, true)[0].Count,
+			dominant.Surname,
+			dominant.Count,
 
 			stats.AvgFreeCPUTokens,
 		)
@@ -584,15 +585,6 @@ func (world *World) PrintMetrics() {
 		}
 	world.ChannelsToUI["metrics"]<-statistics
 	world.ChannelsToUI["metrics"]<-"\n\n"
-
-	// Just a check to see whether the LineageTracker works correctly with respect to 
-	// the DominantLineageCount, then I will remove the latter. It does work correctly.
-	// if world.numOrganisms > 0 {
-	// 	world.ChannelsToUI["metrics"]<-world.stats.LineageTracker.TopK(1, true)[0].Surname
-	// 	world.ChannelsToUI["metrics"]<-world.stats.LineageTracker.TopK(1, true)[0].Count
-	// 	world.ChannelsToUI["metrics"]<-world.stats.DominantLineageCount
-	// 	world.ChannelsToUI["metrics"]<-world.stats.DominantLineageID
-	// }
 }
 
 func (world *World) ReleaseCpu(daemonId string) {
@@ -678,7 +670,7 @@ func (world *World) Tick(ctx context.Context) {
 
 	domLineage := world.stats.LineageTracker.TopK(1, true)[0]
 
-	if world.currentTick % ONE_IN_X_LOGS == 0 {
+	if world.currentTick % LOG_ONCE_IN_X_TICKS == 0 {
 		world.ChannelsToUI["logs"]<-fmt.Sprintf("Tick number %d", world.currentTick)
 		world.ChannelsToUI["logs"]<-fmt.Sprintf("Population %d", world.numOrganisms)
 		world.ChannelsToUI["logs"]<-fmt.Sprintf("Dominant Lineage %s, Count %d\n", 

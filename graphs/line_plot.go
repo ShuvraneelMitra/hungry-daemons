@@ -126,6 +126,20 @@ func (r *liveGraphRenderer) Refresh() {
 	yAxis.Position1 = fyne.NewPos(x0, topPad)
 	yAxis.Position2 = fyne.NewPos(x0, y0)
 
+	xLabel := canvas.NewText("Tick", color.White)
+	xLabel.TextStyle = fyne.TextStyle{
+		Bold: true,
+		Monospace: true,
+	}
+	xLabel.Move(fyne.NewPos(x0 + plotWidth/2 - 15, y0 + 20))
+
+	yLabel := canvas.NewText("Population", color.White)
+	yLabel.TextStyle = fyne.TextStyle{
+		Bold: true,
+		Monospace: true,
+	}
+	yLabel.Move(fyne.NewPos(5, topPad - 24))
+	r.objects = append(r.objects, xLabel, yLabel)
 	r.objects = append(r.objects, xAxis, yAxis)
 
 	yTickCount := 5

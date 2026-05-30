@@ -57,7 +57,7 @@ func CreateStats() *Stats {
 			PopulationDataChan: make(chan any),
 			LineageTracker: &SortedMap{
 				data : make(map[string]int),
-				lineages: make([]LineageCount, 0),
+				Lineages: make([]LineageCount, 0),
 			},
 		}
 	})

@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"strings"
 	"slices"
+	"math"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/widget"
 	"github.com/ShuvraneelMitra/hungry-daemons/managers"
 )
 
@@ -17,6 +19,17 @@ const (
 	maxLogBytes    = 200_000
 	maxMetricBytes = 100_000
 )
+
+func prettyByteSize(b uint64) string {
+	bf := float64(b)
+	for _, unit := range []string{"", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"} {
+		if math.Abs(bf) < 1024.0 {
+			return fmt.Sprintf("%3.1f %sB", bf, unit)
+		}
+		bf /= 1024.0
+	}
+	return fmt.Sprintf("%.1f YiB", bf)
+}
 
 func updateTime(layout *guiLayout) {
 	go func() {
@@ -41,10 +54,18 @@ func updateStatus(layout *guiLayout) {
 
 		for range ticker.C {
 			numGoRoutines := runtime.NumGoroutine()
-			text := "Number of goroutines actively running = " + strconv.Itoa(numGoRoutines)
+			text := "Number of goroutines actively running = " + strconv.Itoa(numGoRoutines) + "\n"
+
+			var memoryStats runtime.MemStats
+			runtime.ReadMemStats(&memoryStats)
+
+			text += "Bytes of allocated heap objects = " + prettyByteSize(memoryStats.HeapAlloc) + "\n"
+			text += "Bytes of memory obtained from OS = " + prettyByteSize(memoryStats.Sys) + "\n"
+			text += "Number of live heap objects = " + strconv.FormatUint(memoryStats.Mallocs - memoryStats.Frees, 10) + "\n"
 
 			fyne.Do(func() {
-				layout.statusBar.body.Text = text
+				segment := layout.statusBar.body.Segments[0].(*widget.TextSegment)
+				segment.Text = text
 				layout.statusBar.body.Refresh()
 			})
 		}

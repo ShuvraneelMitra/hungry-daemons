@@ -9,7 +9,7 @@ type LineageCount struct {
 
 type SortedMap struct {
     data     map[string]int
-    lineages []LineageCount
+    Lineages []LineageCount
 }
 
 func (sm *SortedMap) Set(key string, value int) {
@@ -18,25 +18,25 @@ func (sm *SortedMap) Set(key string, value int) {
     }
     sm.data[key] = value
     // Binary search for insertion point
-    i := sort.Search(len(sm.lineages), func(i int) bool {
-        return sm.lineages[i].Count >= value
+    i := sort.Search(len(sm.Lineages), func(i int) bool {
+        return sm.Lineages[i].Count >= value
     })
-    sm.lineages = append(sm.lineages, LineageCount{})
-    copy(sm.lineages[i+1:], sm.lineages[i:])
-    sm.lineages[i] = LineageCount{key, value}
+    sm.Lineages = append(sm.Lineages, LineageCount{})
+    copy(sm.Lineages[i+1:], sm.Lineages[i:])
+    sm.Lineages[i] = LineageCount{key, value}
 }
 
 func (sm *SortedMap) Delete(key string) {
     val := sm.data[key]
     delete(sm.data, key)
-    i := sort.Search(len(sm.lineages), func(i int) bool {
-        return sm.lineages[i].Count >= val
+    i := sort.Search(len(sm.Lineages), func(i int) bool {
+        return sm.Lineages[i].Count >= val
     })
 	// for duplicates
-    for i < len(sm.lineages) && sm.lineages[i].Surname != key {
+    for i < len(sm.Lineages) && sm.Lineages[i].Surname != key {
         i++
     }
-    sm.lineages = append(sm.lineages[:i], sm.lineages[i+1:]...)
+    sm.Lineages = append(sm.Lineages[:i], sm.Lineages[i+1:]...)
 }
 
 func (sm *SortedMap) Get(key string) (int, bool) {
@@ -45,15 +45,15 @@ func (sm *SortedMap) Get(key string) (int, bool) {
 }
 
 func (sm *SortedMap) TopK(k int, descending bool) []LineageCount {
-    if len(sm.lineages) < k {
-        return sm.lineages
+    if len(sm.Lineages) < k {
+        return sm.Lineages
     }
     
 	result := make([]LineageCount, k)
 	if descending {
-		copy(result, sm.lineages[len(sm.lineages) - k : ])		
+		copy(result, sm.Lineages[len(sm.Lineages) - k : ])		
 	} else {
-		copy(result, sm.lineages[ : k])
+		copy(result, sm.Lineages[ : k])
 	}
 	return result
 }

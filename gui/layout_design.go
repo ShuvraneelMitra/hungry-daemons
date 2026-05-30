@@ -21,7 +21,7 @@ type Header struct {
 
 type StatusBar struct {
 	title *canvas.Text
-	body *canvas.Text
+	body *widget.RichText
 
 	view *fyne.Container
 }
@@ -75,25 +75,31 @@ func getHeader(staticText string) *Header {
 
 func getStatusBar() *StatusBar {
 	title := canvas.NewText("Statistics", LAVENDER)
-	title.TextStyle = fyne.TextStyle{Bold: true,
-									Underline: true,
-								}
+	title.TextStyle = fyne.TextStyle{
+		Bold:      true,
+		Underline: true,
+	}
 	title.TextSize = theme.TextSize() * HEADING_TO_BODY
 
-	bodyText := canvas.NewText("Default Body", theme.ForegroundColor())
+	bodyText := widget.NewRichText(&widget.TextSegment{
+		Style: widget.RichTextStyle{
+			SizeName: theme.SizeNameCaptionText, 
+		},
+		Text: "Default Body",
+	})
 
 	content := container.NewBorder(
-		title,  
-		nil,  
-		nil, 
-		nil,
-		bodyText,
+		title, 
+		nil,   
+		nil,   
+		nil,   
+		bodyText, 
 	)
 
 	return &StatusBar{
 		title: title,
-		body: bodyText,
-		view: content,
+		body:  bodyText, 
+		view:  content,
 	}
 }
 
